@@ -7,8 +7,8 @@
 
 export const GALILEO = {
   name: '0G-Galileo-Testnet',
-  chainId: 16601,
-  chainIdHex: '0x40D9',
+  chainId: 16602,
+  chainIdHex: '0x40DA',
   currency: { name: 'OG', symbol: 'OG', decimals: 18 },
   rpcUrl: 'https://evmrpc-testnet.0g.ai',
   explorer: 'https://chainscan-galileo.0g.ai',

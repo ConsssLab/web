@@ -31,24 +31,46 @@ async function getJson(url, timeoutMs = TIMEOUT_MS) {
   }
 }
 
-/** indexer 的節點清單是 JSON-RPC，不是 REST，所以這裡單獨打一發。 */
-async function indexerNodes(indexer) {
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(indexer, {
-      method: 'POST',
-      signal: ac.signal,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'indexer_getNodes', params: [] }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message || 'indexer error');
-    return Array.isArray(data.result) ? data.result.length : 0;
-  } finally {
-    clearTimeout(timer);
+/**
+ * indexer 的節點清單是 JSON-RPC，不是 REST，所以這裡單獨打一發。
+ * 方法名在 0g-storage-client 版本之間改過，兩個都試，先中的就用。
+ */
+const INDEXER_METHODS = ['indexer_getShardedNodes', 'indexer_getNodes'];
+
+function countNodes(result) {
+  if (Array.isArray(result)) return result.length;
+  if (result && typeof result === 'object') {
+    const buckets = Array.isArray(result.trusted)
+      ? result.trusted
+      : Object.values(result).filter(Array.isArray).flat();
+    return buckets.length;
   }
+  return 0;
+}
+
+async function indexerNodes(indexer) {
+  const errors = [];
+  for (const method of INDEXER_METHODS) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(indexer, {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: [] }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message || 'indexer error');
+      return { count: countNodes(data.result), method };
+    } catch (err) {
+      errors.push(`${method}: ${String(err && err.message ? err.message : err).slice(0, 60)}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw new Error(errors.join(' | ').slice(0, 160));
 }
 
 export async function onRequestGet({ request, env }) {
@@ -58,8 +80,8 @@ export async function onRequestGet({ request, env }) {
 
   if (!root) {
     try {
-      const nodes = await indexerNodes(indexer);
-      return json({ indexer, reachable: true, nodeCount: nodes, network: 'turbo' });
+      const { count, method } = await indexerNodes(indexer);
+      return json({ indexer, reachable: true, nodeCount: count, method, network: 'turbo' });
     } catch (err) {
       return json({
         indexer,

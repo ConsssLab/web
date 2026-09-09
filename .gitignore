@@ -7,3 +7,6 @@ node_modules/
 .vscode/
 .idea/
 .claude/
+
+# wrangler 本機開發產生的建置暫存，不該進版控
+.wrangler/

@@ -11,26 +11,49 @@
 
 import { json, rpc, rpcUrlOf, indexerOf, GALILEO, providerConfig, ogComputeConfig } from './_shared.js';
 
-/** indexer 的活性探測：能拿到節點清單就算通。 */
-async function probeIndexer(indexer, timeoutMs = 5000) {
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
-  try {
-    const res = await fetch(indexer, {
-      method: 'POST',
-      signal: ac.signal,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'indexer_getNodes', params: [] }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message || 'indexer error');
-    return { ok: true, nodeCount: Array.isArray(data.result) ? data.result.length : 0 };
-  } catch (err) {
-    return { ok: false, error: String(err && err.message ? err.message : err).slice(0, 120) };
-  } finally {
-    clearTimeout(timer);
+/**
+ * indexer 的活性探測：能拿到節點清單就算通。
+ *
+ * 方法名在 0g-storage-client 的版本之間改過（getNodes → getShardedNodes），
+ * 所以兩個都試，先中的就用。單押一個名字的話，對方改版我們就無聲地變紅燈。
+ */
+const INDEXER_METHODS = ['indexer_getShardedNodes', 'indexer_getNodes'];
+
+/** getShardedNodes 回傳的是分片物件，getNodes 回傳陣列，這裡統一數出節點數。 */
+function countNodes(result) {
+  if (Array.isArray(result)) return result.length;
+  if (result && typeof result === 'object') {
+    const buckets = Array.isArray(result.trusted)
+      ? result.trusted
+      : Object.values(result).filter(Array.isArray).flat();
+    return buckets.length;
   }
+  return 0;
+}
+
+async function probeIndexer(indexer, timeoutMs = 5000) {
+  const errors = [];
+  for (const method of INDEXER_METHODS) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    try {
+      const res = await fetch(indexer, {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: [] }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message || 'indexer error');
+      return { ok: true, method, nodeCount: countNodes(data.result) };
+    } catch (err) {
+      errors.push(`${method}: ${String(err && err.message ? err.message : err).slice(0, 60)}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return { ok: false, error: errors.join(' | ').slice(0, 160) };
 }
 
 export async function onRequestGet({ env }) {
@@ -77,7 +100,7 @@ export async function onRequestGet({ env }) {
       error: null,
     },
 
-    // ── 賽道三：0G Chain (Galileo 16601) ────────────────
+    // ── 賽道三：0G Chain (Galileo 16602) ────────────────
     chain: {
       track: 3,
       product: '0G Chain · Galileo Testnet',
@@ -117,6 +140,7 @@ export async function onRequestGet({ env }) {
 
   out.storage.live = indexerRes.ok;
   out.storage.nodeCount = indexerRes.ok ? indexerRes.nodeCount : null;
+  out.storage.method = indexerRes.ok ? indexerRes.method : null;
   out.storage.error = indexerRes.ok ? null : indexerRes.error;
 
   return json(out);
