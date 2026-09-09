@@ -8,6 +8,7 @@
 import * as R from './rules.js';
 import * as ART from './art.js';
 import * as OG from './og.js';
+import * as ZGS from './storage.js';
 import { music, sfx } from './audio.js';
 import { TITLE, OPENING, BRIEFING, HEROES, ENDINGS } from './story.js';
 import { askAgent, applyAgentPlays } from './ai.js';
@@ -51,6 +52,7 @@ const game = {
   wallet: null,
   shard: null,
   anchorTx: null,
+  storageRoot: null,
 };
 
 function show(name) {
@@ -484,6 +486,7 @@ function finish() {
   $('shard-narration').textContent = '';
   $('btn-anchor').disabled = true;
   $('btn-verify').disabled = true;
+  $('btn-storage').disabled = true;
   $('proof').hidden = true;
   game.anchorTx = null;
   show('result');
@@ -523,13 +526,13 @@ function renderTracks(overrides = {}) {
   }
 
   // 賽道二：indexer 通不通是一回事，有沒有設上傳端點是另一回事
+  // 上傳現在是用玩家錢包在瀏覽器端做的，所以不再有「未設上傳端點」這回事：
+  // indexer 通就代表可以傳，傳完就顯示 root。
   const st = overrides.storage;
   if (st && st.uploaded) {
-    set('storage', 'ok', `已存檔 root ${st.root ? st.root.slice(0, 10) + '…' : ''}`);
-  } else if (s.storage.live && s.storage.uploadConfigured) {
-    set('storage', 'ok', `indexer ${s.storage.nodeCount} 個節點`);
+    set('storage', 'ok', `已存檔${st.finalized ? '（finalized）' : ''} ${shortHash(st.root)}`);
   } else if (s.storage.live) {
-    set('storage', 'warn', `indexer 連線正常（${s.storage.nodeCount} 節點）· 未設上傳端點`);
+    set('storage', 'ok', `indexer 連線正常（${s.storage.nodeCount} 節點）· 可上傳`);
   } else {
     set('storage', 'bad', 'indexer 連線失敗');
   }
@@ -587,6 +590,7 @@ async function buildShard(result) {
     $('shard-note').textContent =
       data.storage.note || '按下方按鈕，用你的錢包把這枚碎片錨定到 0G Galileo 測試網。';
     $('btn-anchor').disabled = false;
+    $('btn-storage').disabled = false;
     renderTracks({ narrator, storage: data.storage });
 
     // 有 root 就再去問一次 indexer，確認檔案真的被 storage node 收下了
@@ -738,6 +742,59 @@ function renderProof(v) {
 }
 
 /**
+ * 賽道二：把記憶碎片真的傳進 0G Storage。
+ *
+ * 整段用玩家自己的錢包做（算 merkle root → Flow 合約 submit → 傳 segment），
+ * 伺服器不碰私鑰。傳完再回頭問一次 indexer，確認 storage node 真的收下了 ——
+ * 跟賽道三一樣，「沒報錯」不算數，查得到才算。
+ */
+async function uploadToStorage() {
+  if (!game.shard) return;
+  const btn = $('btn-storage');
+  const note = $('shard-note');
+  const st = game.ogStatus && game.ogStatus.storage;
+  btn.disabled = true;
+
+  try {
+    const { root, tx } = await ZGS.upload(game.shard.shard, {
+      indexer: st && st.indexer,
+      rpc: game.ogStatus && game.ogStatus.network && game.ogStatus.network.rpcUrl,
+      onStep: (msg) => {
+        btn.textContent = '上傳中…';
+        note.textContent = msg;
+      },
+    });
+
+    game.storageRoot = root;
+    btn.textContent = '已存檔 ✓';
+    $('shard-mode').textContent = '0G Storage 已存檔';
+    note.textContent = `0G Storage root ${shortHash(root)}${tx ? `　submit tx ${shortHash(String(tx))}` : ''}`;
+    renderTracks({ storage: { uploaded: true, root } });
+
+    const link = $('link-storage');
+    link.href = `https://storagescan-galileo.0g.ai/file/${root}`;
+    link.classList.remove('is-disabled');
+    link.removeAttribute('aria-disabled');
+
+    // 存完再跟 indexer 對一次，確認節點真的收下並完成同步
+    try {
+      const info = await OG.storageInfo(root);
+      if (info && info.found) {
+        renderTracks({ storage: { uploaded: true, root, finalized: info.finalized } });
+        note.textContent = `已存進 0G Storage${info.finalized ? '（已 finalized）' : '（同步中）'}　root ${shortHash(root)}`;
+        if (info.scanUrl) link.href = info.scanUrl;
+      }
+    } catch {
+      // indexer 查詢失敗不影響「已上傳」這件事，畫面維持上一段的結果
+    }
+  } catch (err) {
+    btn.textContent = '存進 0G Storage';
+    btn.disabled = false;
+    note.textContent = ZGS.explainError(err);
+  }
+}
+
+/**
  * 賽道三的收尾：把剛送出去的交易從 0G Chain 讀回來，重新解析 calldata 並比對摘要。
  * 「錢包沒報錯」不算證明，讀得回來、摘要對得上才算。
  */
@@ -783,11 +840,21 @@ function initResult() {
     sfx.tap();
     verifyAnchor({ quiet: false });
   });
+  $('btn-storage').addEventListener('click', () => {
+    sfx.tap();
+    uploadToStorage();
+  });
   $('btn-again').addEventListener('click', () => {
     sfx.tap();
     $('btn-anchor').textContent = '錨定到 0G Chain';
     $('btn-verify').textContent = '鏈上回驗';
+    $('btn-storage').textContent = '存進 0G Storage';
+    const sl = $('link-storage');
+    sl.href = 'https://storagescan-galileo.0g.ai';
+    sl.classList.add('is-disabled');
+    sl.setAttribute('aria-disabled', 'true');
     game.anchorTx = null;
+    game.storageRoot = null;
     $('proof').hidden = true;
     const link = $('link-explorer');
     link.href = 'https://chainscan-galileo.0g.ai';

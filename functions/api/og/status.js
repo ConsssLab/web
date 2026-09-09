@@ -89,11 +89,14 @@ export async function onRequestGet({ env }) {
     storage: {
       track: 2,
       product: '0G Storage',
-      role: '記憶碎片永久存檔',
+      role: '記憶碎片永久存檔（前端用玩家錢包上傳）',
       indexer,
       network: 'turbo',
-      uploadConfigured: Boolean(env.OG_STORAGE_UPLOAD_URL),
-      mode: env.OG_STORAGE_UPLOAD_URL ? 'remote' : 'local-digest',
+      // 預設由前端用玩家錢包上傳（public/js/storage.js）；
+      // 設了 OG_STORAGE_UPLOAD_URL 就改由 Function 轉發給自架 gateway。
+      uploadMode: env.OG_STORAGE_UPLOAD_URL ? 'server-gateway' : 'client-wallet',
+      uploadConfigured: true,
+      gatewayConfigured: Boolean(env.OG_STORAGE_UPLOAD_URL),
       scan: GALILEO.storageScan,
       live: false,
       nodeCount: null,

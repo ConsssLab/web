@@ -9,7 +9,7 @@
 **一分鐘打得完的回合制策略戰，對手是一個真的會讀盤的 AI agent。**<br>
 打完的戰報會被寫成「記憶碎片」，存進 0G Storage、錨定到 0G Chain，而且能從鏈上讀回來重新驗證。
 
-[![0G Galileo](https://img.shields.io/badge/0G_Chain-Galileo_16601-1B7FE0?style=flat-square)](https://chainscan-galileo.0g.ai)
+[![0G Galileo](https://img.shields.io/badge/0G_Chain-Galileo_16602-1B7FE0?style=flat-square)](https://chainscan-galileo.0g.ai)
 [![0G Compute](https://img.shields.io/badge/0G_Compute-TEE_Inference-0E4C8F?style=flat-square)](https://docs.0g.ai/developer-hub/building-on-0g/compute-network/overview)
 [![0G Storage](https://img.shields.io/badge/0G_Storage-Turbo_Indexer-3E9BE8?style=flat-square)](https://docs.0g.ai/developer-hub/building-on-0g/storage/sdk)
 [![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages_+_Functions-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://pages.cloudflare.com)
@@ -62,25 +62,26 @@
 
 | # | 0G 技術 | 在遊戲裡做什麼 | 程式碼位置（點進去看行號） | 狀態 |
 |---|---|---|---|---|
-| **1** | **0G Compute Network**<br>（TEE 可驗證推論） | 戰後旁白 agent「記憶編纂者」：把整場戰鬥寫成要永久存檔的敘述。走 0G Router 的 OpenAI 相容端點。 | [`functions/api/narrate.js#L73-L127`](https://github.com/ConsssLab/web/blob/main/functions/api/narrate.js#L73-L127) | ✅ 已實作 |
-| **1** | **0G Compute Network**<br>（Router 端點常數） | Router base URL 與模型設定，敵方 agent 與旁白 agent 共用同一份設定工廠。 | [`functions/api/og/_shared.js#L23`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L23) · [`#L83-L90`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L83-L90) | ✅ 已實作 |
-| **1** | **0G Compute Network**<br>（敵方 agent 可切換） | 敵方 AI agent 預設走 OpenAI；把 `AI_PROVIDER` 改成 `0g` 就整支切到 0G Compute，程式碼一行都不用動。 | [`functions/api/agent.js#L16`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L16) · [`#L31-L40`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L31-L40) | ✅ 已實作 |
-| **2** | **0G Storage**<br>（寫入） | 記憶碎片正規化 → SHA-256 → 送進 0G Storage gateway，解析回傳的 merkle `root` 與 `txSeq`。 | [`functions/api/og/shard.js#L94-L160`](https://github.com/ConsssLab/web/blob/main/functions/api/og/shard.js#L94-L160) | ✅ 已實作<br>（需設 gateway） |
-| **2** | **0G Storage**<br>（唯讀查詢 / indexer） | 拿 root hash 打 Turbo indexer 的 `/file/info/{root}`，確認檔案真的被 storage node 收下並 finalized。唯讀，不需要金鑰。 | [`functions/api/og/storage.js#L54-L92`](https://github.com/ConsssLab/web/blob/main/functions/api/og/storage.js#L54-L92) | ✅ 已實作 |
-| **2** | **0G Storage**<br>（節點活性） | `indexer_getNodes` 探測 indexer 活性與節點數，畫成結果畫面的燈號。 | [`functions/api/og/status.js#L15-L33`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L15-L33) | ✅ 已實作 |
-| **3** | **0G Chain**<br>（錨定寫入） | 組出 40 bytes 結構化 calldata（魔術字 `CSSW` + 版本 + 戰績 + SHA-256），由玩家自己的錢包送出。伺服器不保管任何私鑰。 | [`functions/api/og/shard.js#L74-L83`](https://github.com/ConsssLab/web/blob/main/functions/api/og/shard.js#L74-L83) · [`public/js/og.js#L123-L137`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L123-L137) | ✅ 已實作 |
-| **3** | **0G Chain**<br>（鏈上回驗） | 用 `eth_getTransactionByHash` 把交易讀回來，反解 calldata，跟本地摘要比對，回報區塊高度、確認數、成功與否。 | [`functions/api/og/verify.js#L20-L37`](https://github.com/ConsssLab/web/blob/main/functions/api/og/verify.js#L20-L37) · [`#L44-L92`](https://github.com/ConsssLab/web/blob/main/functions/api/og/verify.js#L44-L92) | ✅ 已實作 |
-| **3** | **0G Chain**<br>（鏈況 / 切鏈） | 標題頁即時顯示 Galileo 區塊高度與 gas price；錢包沒有這條鏈就自動 `wallet_addEthereumChain` 加進去。 | [`functions/api/og/status.js#L95-L112`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L95-L112) · [`public/js/og.js#L94-L116`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L94-L116) | ✅ 已實作 |
-| — | **敵方 AI agent**<br>（OpenAI API） | 每回合把盤面送給 `gpt-4o-mini`，收回出牌決策與嘲諷。輸出一律當不可信資料重新過濾。 | [`functions/api/agent.js#L206-L250`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L206-L250) · [`public/js/ai.js#L20-L64`](https://github.com/ConsssLab/web/blob/main/public/js/ai.js#L20-L64) | ✅ 已實作 |
+| **1** | **0G Compute Network**<br>（TEE 可驗證推論） | 戰後旁白 agent「記憶編纂者」：把整場戰鬥寫成要永久存檔的敘述。走 0G Router 的 OpenAI 相容端點，回應標頭帶 TEE 驗證資訊。 | [`functions/api/narrate.js#L55-L134`](https://github.com/ConsssLab/web/blob/main/functions/api/narrate.js#L55-L134) | ✅ 已實作 |
+| **1** | **0G Compute Network**<br>（Router 設定） | Router base URL 與模型設定，敵方 agent 與旁白 agent 共用同一份設定工廠。 | [`functions/api/og/_shared.js#L22-L23`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L22-L23) · [`#L82-L90`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L82-L90) | ✅ 已實作 |
+| **1** | **0G Compute Network**<br>（敵方 agent 可切換） | 敵方 AI agent 預設走 OpenAI；把 `AI_PROVIDER` 改成 `0g` 就整支切到 0G Compute，程式碼一行都不用動。 | [`functions/api/agent.js#L16`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L16) · [`#L31-L51`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L31-L51) | ✅ 已實作 |
+| **2** | **0G Storage**<br>（真實寫入） | 用官方 SDK 在瀏覽器端算出 merkle root、對 Flow 合約送 submit、再把 segment 傳給 storage node。**全程用玩家自己的錢包簽，伺服器不碰私鑰。** | [`public/js/storage.js#L53-L85`](https://github.com/ConsssLab/web/blob/main/public/js/storage.js#L53-L85) | ✅ 已實作 |
+| **2** | **0G Storage**<br>（唯讀查詢 / indexer） | 拿 root hash 打 Turbo indexer，確認檔案真的被 storage node 收下並 finalized。唯讀，不需要金鑰。 | [`functions/api/og/storage.js#L76-L114`](https://github.com/ConsssLab/web/blob/main/functions/api/og/storage.js#L76-L114) | ✅ 已實作 |
+| **2** | **0G Storage**<br>（節點活性） | `indexer_getShardedNodes` 探測 indexer 活性與節點數，畫成結果畫面的燈號。 | [`functions/api/og/status.js#L34-L57`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L34-L57) | ✅ 已實作 |
+| **2** | **0G Storage**<br>（伺服器 gateway，選用） | 想讓玩家不用付儲存費時，改由 Function 轉發給自架的 `0g-storage-client` gateway。 | [`functions/api/og/shard.js#L86-L167`](https://github.com/ConsssLab/web/blob/main/functions/api/og/shard.js#L86-L167) | ✅ 已實作<br>（選用） |
+| **3** | **0G Chain**<br>（錨定寫入） | 組出 40 bytes 結構化 calldata（魔術字 `CSSW` + 版本 + 戰績 + SHA-256），用合約建立交易由玩家錢包送出。 | [`functions/api/og/shard.js#L62-L84`](https://github.com/ConsssLab/web/blob/main/functions/api/og/shard.js#L62-L84) · [`public/js/og.js#L174-L199`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L174-L199) | ✅ 已實作 |
+| **3** | **0G Chain**<br>（鏈上回驗） | 用 `eth_getTransactionByHash` 把交易讀回來，反解 calldata，跟本地摘要逐欄比對，畫成結果畫面的「鏈上存證」對照表。 | [`functions/api/og/verify.js#L19-L47`](https://github.com/ConsssLab/web/blob/main/functions/api/og/verify.js#L19-L47) · [`functions/api/og/verify.js#L49-L104`](https://github.com/ConsssLab/web/blob/main/functions/api/og/verify.js#L49-L104) | ✅ 已實作 |
+| **3** | **0G Chain**<br>（鏈況 / 切鏈） | 標題頁即時顯示 Galileo 區塊高度與 gas price；chainId 從鏈上實際讀回來校準，錢包沒有這條鏈就自動加進去。 | [`functions/api/og/status.js#L59-L150`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L59-L150) · [`public/js/og.js#L116-L159`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L116-L159) | ✅ 已實作 |
+| — | **敵方 AI agent**<br>（OpenAI API） | 每回合把盤面送給 `gpt-4o-mini`，收回出牌決策與嘲諷。輸出一律當不可信資料重新過濾。 | [`functions/api/agent.js#L173-L256`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L173-L256) · [`public/js/ai.js#L16-L65`](https://github.com/ConsssLab/web/blob/main/public/js/ai.js#L16-L65) | ✅ 已實作 |
 
 **三條賽道是串起來的，不是三個各自獨立的 demo：**
 
 ```
-賽道一 0G Compute ──寫出敘述──▶ 記憶碎片 ──存檔──▶ 賽道二 0G Storage
-                                     │
-                                  SHA-256
-                                     ▼
-                            賽道三 0G Chain 錨定 ──讀回來比對──▶ ✓
+賽道一 0G Compute ──寫出敘述──▶ 記憶碎片 ──玩家錢包上傳──▶ 賽道二 0G Storage
+   （TEE 可驗證推論）              │                          （merkle root，indexer 可查）
+                               SHA-256
+                                  ▼
+                    賽道三 0G Chain 錨定 ──從鏈上讀回來逐欄比對──▶ ✓
 ```
 
 ### 評審可以自己打的端點

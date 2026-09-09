@@ -3,14 +3,14 @@
  *
  * 這支同時服務兩條 0G 賽道，流程刻意分成兩段，因為兩段的信任模型不一樣：
  *
- *   賽道二 0G Storage：這支 Function 產生正規化後的碎片 JSON，算出 SHA-256 內容摘要，
- *     並在設定了 OG_STORAGE_UPLOAD_URL 時把檔案送進 0G Storage（gateway / indexer）。
- *     上傳成功會拿到 0G Storage 的 root hash 與 txSeq，可在 storagescan 上查到。
+ *   賽道二 0G Storage：這支 Function 產生正規化後的碎片 JSON 並算出 SHA-256 內容摘要。
+ *     實際上傳預設由前端做（public/js/storage.js 用玩家自己的錢包跑官方 SDK）；
+ *     設了 OG_STORAGE_UPLOAD_URL 才改由這支轉發給自架 gateway。
  *
  *   賽道三 0G Chain：這支只負責把要上鏈的 calldata 組好（魔術字 + 版本 + 戰績 + 摘要），
  *     真正送交易的是前端玩家自己的錢包。伺服器不保管任何私鑰。
  *
- * 沒設定 0G Storage 端點時回 mode:"local-digest"，前端照實顯示「未上傳」，不會謊稱有傳。
+ * 兩條路都沒走就只回摘要，前端照實顯示「尚未上傳」，不會謊稱有傳。
  */
 
 import {
@@ -84,12 +84,15 @@ function buildCalldata(shard, digest) {
 }
 
 /**
- * 賽道二：把碎片送進 0G Storage。
+ * 賽道二的伺服器端上傳路徑（選用）。
  *
  * 0G Storage 的寫入要先在鏈上送 Flow 合約的 submit（付費），再把 segment 傳給
- * storage node，所以正規做法是掛一個持有測試網私鑰的 0g-storage-client gateway，
- * 這支 Function 只負責把檔案轉發過去 —— Worker 裡不放私鑰。
- * 回傳裡的 root 就是 0G Storage 的 merkle root，可直接拿去 storagescan / indexer 查。
+ * storage node，中間那筆交易需要私鑰 —— Worker 裡不放私鑰，所以預設不走這裡，
+ * 而是由前端用玩家自己的錢包完成（public/js/storage.js）。
+ *
+ * 想讓玩家完全不用付儲存費的話，自己架一台 0g-storage-client gateway 並設定
+ * OG_STORAGE_UPLOAD_URL，這支就會把檔案轉發過去（私鑰只存在那台 gateway 上）。
+ * 回傳裡的 root 就是 0G Storage 的 merkle root，可拿去 storagescan / indexer 查。
  */
 async function uploadToStorage(env, shard, bytes) {
   const uploadUrl = env.OG_STORAGE_UPLOAD_URL;
@@ -97,10 +100,10 @@ async function uploadToStorage(env, shard, bytes) {
 
   if (!uploadUrl) {
     return {
-      mode: 'local-digest',
+      mode: 'client-wallet',
       uploaded: false,
       indexer,
-      note: '0G Storage 上傳端點未設定（OG_STORAGE_UPLOAD_URL），這一版只產生內容摘要。摘要照樣可以用錢包錨定到 0G Chain。',
+      note: '碎片已產生。按「存進 0G Storage」用你的錢包上傳，或按「錨定到 0G Chain」把摘要寫上鏈。',
     };
   }
 
