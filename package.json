@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler pages dev public --compatibility-date=2024-09-01 --port 8788",
-    "deploy": "wrangler pages deploy public --project-name conssswars-web",
+    "deploy": "wrangler pages deploy public --project-name conssswars-web --branch main",
     "sim": "node scripts/simulate.mjs"
   },
   "devDependencies": {
