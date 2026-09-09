@@ -166,6 +166,23 @@
               >在區塊鏈上查看 ↗</a
             >
           </div>
+
+          <!-- 賽道二的動作另起一列：0G Storage 的上傳跟 0G Chain 的錨定是兩件事，
+               擠在同一列四顆按鈕在手機上會爛掉。 -->
+          <div class="shard-actions">
+            <button class="btn btn--chain" id="btn-storage" type="button" disabled>
+              存進 0G Storage
+            </button>
+            <a
+              class="btn btn--ghost is-disabled"
+              id="link-storage"
+              href="https://storagescan-galileo.0g.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-disabled="true"
+              >在 0G Storage 上查看 ↗</a
+            >
+          </div>
           <p class="shard-note" id="shard-note"></p>
 
           <!-- 鏈上存證對照：左邊是本地這枚碎片，右邊是從 0G Chain 的 calldata 解回來的。
