@@ -84,17 +84,58 @@ export async function upload(shard, { indexer, rpc, onStep } = {}) {
   return { root, tx: typeof tx === 'string' ? tx : tx && (tx.txHash || tx.hash) };
 }
 
-/** 把 SDK 丟回來的錯誤翻成玩家看得懂的話。 */
-export function explainError(err) {
+/**
+ * 從瀏覽器直接打一次 indexer，用來分辨「真的連不上」與「被 CORS 擋掉」。
+ *
+ * 這兩種在 JS 裡都長成同一個 TypeError（瀏覽器不會告訴你是不是 CORS），
+ * 所以單看前端分不出來。但我們有第二個資訊來源：/api/og/status 是從
+ * Cloudflare 的伺服器端打同一個 indexer 的。伺服器連得到、瀏覽器連不到，
+ * 那就是對方沒開 CORS，而不是玩家網路有問題 —— 這兩件事的處理方式差很多，
+ * 不講清楚玩家只會一直重試。
+ */
+export async function probeIndexerFromBrowser(indexer) {
+  try {
+    const res = await fetch(indexer, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'indexer_getShardedNodes', params: [] }),
+    });
+    return { reachable: true, status: res.status };
+  } catch (err) {
+    return { reachable: false, error: String((err && err.message) || err) };
+  }
+}
+
+/**
+ * 把 SDK 丟回來的錯誤翻成玩家看得懂的話。
+ *
+ * serverSaysLive 是 /api/og/status 回報的 storage.live —— 拿它跟前端的探測結果
+ * 交叉比對才能給出正確的診斷，光看錯誤字串會把 CORS 誤判成網路問題。
+ * 不管分到哪一類，原始訊息都保留在後面，否則出事時完全無從查起。
+ */
+export async function explainError(err, { indexer, serverSaysLive } = {}) {
   const msg = String((err && (err.message || err.reason)) || err);
+
   if (/insufficient|balance|funds/i.test(msg)) {
     return '餘額不足付儲存費與 gas。到 faucet.0g.ai 領一點測試網 OG 再試一次。';
   }
   if (/user rejected|user denied|4001|ACTION_REJECTED/i.test(msg)) {
     return '你在錢包按了取消，沒有上傳任何東西。';
   }
-  if (/network|fetch|timeout|ECONN/i.test(msg)) {
-    return `連不上 0G Storage 節點：${msg.slice(0, 140)}`;
+
+  if (/failed to fetch|network|fetch|timeout|ECONN|load failed/i.test(msg)) {
+    if (indexer) {
+      const probe = await probeIndexerFromBrowser(indexer);
+      if (!probe.reachable && serverSaysLive) {
+        return `0G Storage 的 indexer 不允許瀏覽器直接連線（CORS）—— 伺服器端連得到，這個瀏覽器連不到。這是節點端的限制，不是你的網路問題。原始錯誤：${msg.slice(0, 100)}`;
+      }
+      if (!probe.reachable) {
+        return `連不上 0G Storage 節點（伺服器端也連不到，可能是節點在維護）。原始錯誤：${msg.slice(0, 100)}`;
+      }
+      return `indexer 連得到，但上傳過程中斷 —— 可能是卡在後面的 storage node 或 Flow 合約那步。原始錯誤：${msg.slice(0, 140)}`;
+    }
+    return `連線失敗：${msg.slice(0, 160)}`;
   }
-  return msg.slice(0, 200);
+
+  return msg.slice(0, 220);
 }
