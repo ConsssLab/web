@@ -39,7 +39,9 @@
 html,
 body {
   margin: 0;
-  height: 100%;
+  /* 用 min-height 而不是 height：內容比視窗高的時候文件要能長高，
+     鎖成 height:100% 會讓超出的部分捲不到。 */
+  min-height: 100%;
   background: var(--paper-deep);
   color: var(--ink);
   font-family:
@@ -56,7 +58,9 @@ body {
 body {
   display: flex;
   justify-content: center;
-  align-items: stretch;
+  /* 不能用 stretch：那會把 .stage 的高度釘死成視窗高，
+     它的 min-height:100dvh 就長不起來，結果頁一長就被裁掉。 */
+  align-items: flex-start;
 }
 
 .stage {
@@ -64,7 +68,9 @@ body {
   width: 100%;
   max-width: 440px;
   min-height: 100dvh;
-  overflow: hidden;
+  /* 只裁水平方向：背景那層水面刻意畫超出左右邊界，要裁掉；
+     但垂直方向必須讓內容長出去並且捲得到。 */
+  overflow-x: hidden;
   isolation: isolate;
   background: var(--paper);
 }
@@ -72,6 +78,7 @@ body {
 /* 細垂直線 overlay —— 參考裡那層印刷格線 */
 .stage-bg {
   position: absolute;
+  /* inset:0 是相對於 .stage 的完整高度，stage 變長它就跟著長 */
   inset: 0;
   z-index: -1;
   background:
