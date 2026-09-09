@@ -16,23 +16,33 @@ import { json, rpc, rpcUrlOf, GALILEO, ANCHOR_MAGIC, clampStr } from './_shared.
 const RESULT_NAME = { 0: 'draw', 1: 'hero', 2: 'forgetter' };
 const TX_RE = /^0x[0-9a-fA-F]{64}$/;
 
-/** shard.js buildCalldata() 的反向操作。長度或魔術字不對就直接說不是我們的交易。 */
+/**
+ * shard.js buildCalldata() 的反向操作。
+ *
+ * 魔術字用「找」的而不是「固定在開頭」：錨定交易是合約建立交易，
+ * input 前面有一小段 init code（600080f3），碎片是接在它後面的。
+ * 用搜尋的話，之後前綴再變、或是有人用別的方式把同一段資料送上鏈，都還是解得出來。
+ */
 function decodeCalldata(input) {
   const body = typeof input === 'string' && input.startsWith('0x') ? input.slice(2) : '';
-  if (body.length < 80) return { recognized: false, reason: 'calldata 太短，不是本遊戲的錨定交易' };
-  if (body.slice(0, 8).toLowerCase() !== ANCHOR_MAGIC.toLowerCase()) {
-    return { recognized: false, reason: 'calldata 開頭不是 CSSW 魔術字' };
+  const at = body.toLowerCase().indexOf(ANCHOR_MAGIC.toLowerCase());
+  if (at === -1) {
+    return { recognized: false, reason: 'input 裡找不到 CSSW 魔術字，不是本遊戲的錨定交易' };
   }
-  const u8 = (i) => parseInt(body.slice(i, i + 2), 16);
+  if (body.length - at < 80) {
+    return { recognized: false, reason: '找到魔術字但後面的資料不完整' };
+  }
+  const u8 = (i) => parseInt(body.slice(at + i, at + i + 2), 16);
   const heroCoreRaw = u8(14);
   return {
     recognized: true,
+    offset: at / 2,
     version: u8(8),
     result: RESULT_NAME[u8(10)] || 'draw',
     turns: u8(12),
     // heroCore 是用 uint8 補碼存的，超過 127 就是負數
     heroCore: heroCoreRaw > 127 ? heroCoreRaw - 256 : heroCoreRaw,
-    digest: '0x' + body.slice(16, 80).toLowerCase(),
+    digest: '0x' + body.slice(at + 16, at + 80).toLowerCase(),
   };
 }
 
@@ -73,7 +83,8 @@ export async function onRequestGet({ request, env }) {
       chainId: GALILEO.chainId,
       network: GALILEO.name,
       from: txData.from,
-      to: txData.to,
+      to: txData.to, // 合約建立交易這裡會是 null
+      contractAddress: (receipt && receipt.contractAddress) || null,
       blockNumber,
       confirmations: blockNumber !== null && head !== null ? Math.max(0, head - blockNumber + 1) : null,
       status: receipt ? (receipt.status === '0x1' ? 'success' : 'failed') : 'pending',

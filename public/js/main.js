@@ -596,7 +596,9 @@ async function buildShard(result) {
             $('shard-mode').textContent = `0G Storage 已存檔${info.finalized ? ' · finalized' : ''}`;
             const link = $('link-explorer');
             link.href = info.scanUrl;
-            link.textContent = '看這個檔案 ↗';
+            link.textContent = '在 0G Storage 上查看 ↗';
+            link.classList.remove('is-disabled');
+            link.removeAttribute('aria-disabled');
           }
         })
         .catch(() => {});
@@ -640,7 +642,9 @@ async function anchor() {
     game.anchorTx = txHash;
     const link = $('link-explorer');
     link.href = explorerUrl;
-    link.textContent = '看這筆交易 ↗';
+    link.textContent = '在區塊鏈上查看 ↗';
+    link.classList.remove('is-disabled');
+    link.removeAttribute('aria-disabled');
     btn.textContent = '已送出 · 等待打包';
     note.textContent = `${OG.shortAddress(game.wallet)} → ${txHash.slice(0, 18)}…　交易已送出，正在等它進區塊。`;
     $('btn-verify').disabled = false;
@@ -653,7 +657,9 @@ async function anchor() {
       ? `餘額不足付 gas。到 ${OG.FAUCET_URL} 領一點測試網 OG 再試一次。`
       : /user rejected|user denied|4001/i.test(msg)
         ? '你在錢包按了取消，沒有送出任何交易。'
-        : msg.slice(0, 240);
+        : /internal accounts cannot include data/i.test(msg)
+          ? '錢包擋下了這筆交易（不允許對自己的帳戶送出帶資料的交易）。請重新整理頁面再試一次 —— 新版已改用合約建立交易繞開這個限制。'
+          : msg.slice(0, 240);
     btn.textContent = '錨定到 0G Chain';
     btn.disabled = false;
   }
@@ -718,6 +724,11 @@ function initResult() {
     $('btn-anchor').textContent = '錨定到 0G Chain';
     $('btn-verify').textContent = '鏈上回驗';
     game.anchorTx = null;
+    const link = $('link-explorer');
+    link.href = 'https://chainscan-galileo.0g.ai';
+    link.textContent = '在區塊鏈上查看 ↗';
+    link.classList.add('is-disabled');
+    link.setAttribute('aria-disabled', 'true');
     startBattle();
   });
 }
