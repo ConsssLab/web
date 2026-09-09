@@ -130,8 +130,10 @@ npm run sim     # 跑 300 場隨機對戰，印出勝負分布與平均回合數
 | 蕙 Hue | 見證者 | The Witness |
 | 刃 Ren | 零重刃 | Blade of Gravity |
 
-形象照放 `public/images/heroes.png`（三格拼版，左到右 零→蕙→刃）就會自動採用；
-沒放則退回 `art.js` 現畫的 inline SVG，兩種情況都能正常運作。
+形象照放 `public/images/heroes.{png,jpg,jpeg,webp}`（**一張**三格拼版，左到右 零→蕙→刃，
+單格比例約 454×787）就會自動採用 —— 程式不裁圖，整張載入後用 CSS 取三等分之一。
+沒放則退回 `art.js` 現畫的 inline SVG，兩種情況都能正常運作。細節見
+[`public/images/README.md`](public/images/README.md)。
 
 ---
 
