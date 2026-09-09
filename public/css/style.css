@@ -1089,3 +1089,9 @@ body {
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
+
+/* 還沒錨定就沒有交易可看，連結先停用，避免點過去只看到瀏覽器首頁。 */
+.btn.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}

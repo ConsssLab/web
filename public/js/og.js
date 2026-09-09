@@ -161,11 +161,27 @@ export async function ensureGalileo() {
 let calibrated = false;
 
 /**
+ * 最小的合約建立 init code：
+ *   60 00  PUSH1 0x00      堆疊 [0]
+ *   80     DUP1             堆疊 [0, 0]
+ *   f3     RETURN(0, 0)     回傳長度 0 的 runtime code
+ *
+ * 執行到 RETURN 就停了，所以接在後面的碎片摘要永遠不會被當成指令執行，
+ * 但它整段都在交易的 input 裡，鏈上讀得到。部署出來的是一個空合約。
+ */
+const DEPLOY_PREFIX = '600080f3';
+
+/**
  * 賽道三：把碎片摘要寫進 0G Galileo 的一筆交易。
  *
- * calldata 是 Function 端組好的 40 bytes（魔術字 CSSW + 版本 + 戰績 + SHA-256 摘要），
- * 送一筆給自己的 0 值交易帶上去 —— 不用部署合約，chainscan 上直接看得到 input data，
- * /api/og/verify 也能把它讀回來重新解析。這一步需要一點測試網 OG 當 gas。
+ * 為什麼是「合約建立」而不是普通轉帳：
+ * MetaMask 禁止對自己錢包裡的帳戶發送帶 data 的交易
+ * （External transactions to internal accounts cannot include data），
+ * 而這正是原本「送一筆給自己」的做法。合約建立交易（to 留空）沒有這個限制，
+ * 是 EVM 的一等公民交易型別，input 一樣完整留在鏈上，
+ * /api/og/verify 照樣能用 eth_getTransactionByHash 讀回來重新解析。
+ *
+ * 這一步需要一點測試網 OG 當 gas，沒有的話先去 faucet 領。
  */
 export async function anchorDigest(address, calldata) {
   const provider = eth();
@@ -177,7 +193,7 @@ export async function anchorDigest(address, calldata) {
 
   const txHash = await provider.request({
     method: 'eth_sendTransaction',
-    params: [{ from: address, to: address, value: '0x0', data: calldata }],
+    params: [{ from: address, value: '0x0', data: '0x' + DEPLOY_PREFIX + calldata.slice(2) }],
   });
   return { txHash, explorerUrl: `${GALILEO.blockExplorerUrls[0]}/tx/${txHash}` };
 }
