@@ -50,6 +50,7 @@ const game = {
   ogStatus: null,
   wallet: null,
   shard: null,
+  anchorTx: null,
 };
 
 function show(name) {
@@ -89,11 +90,13 @@ async function loadOgStatus() {
     const chain = s.chain.ok
       ? `0G Galileo #${s.chain.blockNumber.toLocaleString()}`
       : '0G Galileo 連線失敗';
-    const brain = s.compute.configured
-      ? `AI agent：${s.compute.label} · ${s.compute.model}`
-      : `AI agent：${s.compute.label}（未設金鑰，走本地備援）`;
+    // 敵方 agent（OpenAI）與旁白 agent（0G Compute）是兩個不同的服務，這裡報敵方那個
+    const foe = s.enemyAgent || s.compute;
+    const brain = foe.configured
+      ? `敵方 agent：${foe.label} · ${foe.model}`
+      : `敵方 agent：${foe.label}（未設金鑰，走本地備援）`;
     text.textContent = `${chain} ｜ ${brain}`;
-    dot.dataset.state = s.chain.ok ? (s.compute.configured ? 'ok' : 'warn') : 'bad';
+    dot.dataset.state = s.chain.ok ? (foe.configured ? 'ok' : 'warn') : 'bad';
   } catch {
     text.textContent = '0G 狀態讀取失敗 —— 遊戲仍可離線遊玩。';
     dot.dataset.state = 'bad';
@@ -476,28 +479,126 @@ function finish() {
   $('shard-mode').textContent = '產生中…';
   $('shard-digest').textContent = '—';
   $('shard-note').textContent = '';
+  $('shard-narration').textContent = '';
   $('btn-anchor').disabled = true;
+  $('btn-verify').disabled = true;
+  game.anchorTx = null;
   show('result');
+  renderTracks();
   buildShard(result);
 }
 
+/**
+ * 結果畫面的「0G 三賽道」面板。
+ * 資料來源是 /api/og/status（開場就抓過一次），這裡只負責畫燈號與說明文字。
+ * 沒設定就寫沒設定 —— 這面板是給評審看的，不能寫得比實際接上的還好看。
+ */
+function renderTracks(overrides = {}) {
+  const s = game.ogStatus;
+  const set = (key, state, text) => {
+    const li = document.querySelector(`.track[data-track="${key}"]`);
+    if (!li) return;
+    li.querySelector('.track-dot').dataset.state = state;
+    $(`track-${key}`).textContent = text;
+  };
+
+  if (!s) {
+    set('compute', 'idle', '狀態讀取中…');
+    set('storage', 'idle', '狀態讀取中…');
+    set('chain', 'idle', '狀態讀取中…');
+    return;
+  }
+
+  // 賽道一：戰後旁白跑在 0G Compute 上，敵方 agent 走 OpenAI，兩個都報
+  const narrator = overrides.narrator;
+  if (narrator && narrator.provider === '0g-compute') {
+    set('compute', 'ok', `${narrator.model}${narrator.tee ? ' · TEE' : ''}`);
+  } else if (s.compute.configured) {
+    set('compute', 'ok', `${s.compute.model} · TEE 就緒`);
+  } else {
+    set('compute', 'warn', '未設金鑰，旁白走本地備援');
+  }
+
+  // 賽道二：indexer 通不通是一回事，有沒有設上傳端點是另一回事
+  const st = overrides.storage;
+  if (st && st.uploaded) {
+    set('storage', 'ok', `已存檔 root ${st.root ? st.root.slice(0, 10) + '…' : ''}`);
+  } else if (s.storage.live && s.storage.uploadConfigured) {
+    set('storage', 'ok', `indexer ${s.storage.nodeCount} 個節點`);
+  } else if (s.storage.live) {
+    set('storage', 'warn', `indexer 連線正常（${s.storage.nodeCount} 節點）· 未設上傳端點`);
+  } else {
+    set('storage', 'bad', 'indexer 連線失敗');
+  }
+
+  // 賽道三：先報鏈高度，錨定並回驗之後改報區塊與確認數
+  const v = overrides.verify;
+  if (v && v.found) {
+    set(
+      'chain',
+      v.digestMatch === false ? 'warn' : 'ok',
+      `#${v.blockNumber} · ${v.status} · 摘要${v.digestMatch ? '相符 ✓' : '不符'}`,
+    );
+  } else if (s.chain.ok) {
+    set('chain', 'ok', `Galileo #${s.chain.blockNumber.toLocaleString()}`);
+  } else {
+    set('chain', 'bad', 'RPC 連線失敗');
+  }
+}
+
 async function buildShard(result) {
+  const summary = {
+    result,
+    turns: game.state.turn,
+    heroCore: game.state.core.hero,
+    forgetterCore: game.state.core.forgetter,
+    agentModel: game.agentInfo.model || '',
+  };
+
+  // 賽道一：先請 0G Compute 上的「記憶編纂者」寫一段敘述，寫完才封進碎片，
+  // 這樣三條賽道是串起來的 —— 0G 推論的產物會跟著上 0G Storage 與 0G Chain。
+  let narrator = null;
+  try {
+    narrator = await OG.narrate(summary);
+    if (narrator && narrator.narration) {
+      $('shard-narration').textContent = narrator.narration;
+      renderTracks({ narrator });
+    }
+  } catch {
+    // 旁白拿不到不影響存檔，繼續往下走
+  }
+
   try {
     const data = await OG.buildShard({
-      result,
-      turns: game.state.turn,
-      heroCore: game.state.core.hero,
-      forgetterCore: game.state.core.forgetter,
+      ...summary,
       agentProvider: game.agentInfo.provider || 'unknown',
-      agentModel: game.agentInfo.model || '',
+      narrator: narrator ? narrator.provider : '',
+      narration: narrator ? narrator.narration : '',
       agentTurns: game.agentTurns,
     });
     game.shard = data;
     $('shard-digest').textContent = data.digest;
-    $('shard-mode').textContent = data.storage.uploaded ? '0G Storage 已上傳' : '本地摘要';
+    $('shard-mode').textContent = data.storage.uploaded
+      ? `0G Storage 已存檔${data.storage.txSeq !== null ? ` · txSeq ${data.storage.txSeq}` : ''}`
+      : '本地摘要';
     $('shard-note').textContent =
-      data.storage.note || '按下方按鈕，用你的錢包把這枚摘要錨定到 0G Galileo 測試網。';
+      data.storage.note || '按下方按鈕，用你的錢包把這枚碎片錨定到 0G Galileo 測試網。';
     $('btn-anchor').disabled = false;
+    renderTracks({ narrator, storage: data.storage });
+
+    // 有 root 就再去問一次 indexer，確認檔案真的被 storage node 收下了
+    if (data.storage.root) {
+      OG.storageInfo(data.storage.root)
+        .then((info) => {
+          if (info && info.found) {
+            $('shard-mode').textContent = `0G Storage 已存檔${info.finalized ? ' · finalized' : ''}`;
+            const link = $('link-explorer');
+            link.href = info.scanUrl;
+            link.textContent = '看這個檔案 ↗';
+          }
+        })
+        .catch(() => {});
+    }
   } catch (err) {
     $('shard-mode').textContent = '產生失敗';
     $('shard-note').textContent = String(err && err.message ? err.message : err);
@@ -519,12 +620,19 @@ async function anchor() {
   btn.textContent = '錢包確認中…';
   try {
     if (!game.wallet) game.wallet = await OG.connect();
-    const { txHash, explorerUrl } = await OG.anchorDigest(game.wallet, game.shard.digest);
+    const { txHash, explorerUrl } = await OG.anchorDigest(
+      game.wallet,
+      game.shard.calldata || game.shard.digest,
+    );
+    game.anchorTx = txHash;
     btn.textContent = '已錨定 ✓';
     note.textContent = `${OG.shortAddress(game.wallet)} 已送出：${txHash}`;
     const link = $('link-explorer');
     link.href = explorerUrl;
     link.textContent = '看這筆交易 ↗';
+    $('btn-verify').disabled = false;
+    // 交易剛送出通常還沒進區塊，等一下再自動回驗一次，省得玩家自己按
+    setTimeout(() => verifyAnchor(), 4000);
   } catch (err) {
     const msg = err && (err.message || err.reason) ? err.message || err.reason : String(err);
     note.textContent = /insufficient/i.test(msg)
@@ -535,11 +643,47 @@ async function anchor() {
   }
 }
 
+/**
+ * 賽道三的收尾：把剛送出去的交易從 0G Chain 讀回來，重新解析 calldata 並比對摘要。
+ * 「錢包沒報錯」不算證明，讀得回來、摘要對得上才算。
+ */
+async function verifyAnchor() {
+  if (!game.anchorTx || !game.shard) return;
+  const btn = $('btn-verify');
+  const note = $('shard-note');
+  btn.disabled = true;
+  btn.textContent = '回驗中…';
+  try {
+    const v = await OG.verifyAnchor(game.anchorTx, game.shard.digest);
+    renderTracks({ verify: v });
+    if (!v.found) {
+      note.textContent = '交易還沒進區塊，等幾秒再按一次回驗。';
+      btn.textContent = '鏈上回驗';
+      btn.disabled = false;
+      return;
+    }
+    btn.textContent = v.digestMatch ? '已回驗 ✓' : '回驗：摘要不符';
+    note.textContent = v.digestMatch
+      ? `區塊 #${v.blockNumber} · ${v.confirmations} 個確認 · 鏈上讀回的摘要與本地碎片相符。`
+      : `區塊 #${v.blockNumber}，但鏈上摘要與本地碎片不一致。`;
+    if (!v.digestMatch) btn.disabled = false;
+  } catch (err) {
+    btn.textContent = '鏈上回驗';
+    btn.disabled = false;
+    note.textContent = String(err && err.message ? err.message : err).slice(0, 200);
+  }
+}
+
 function initResult() {
   $('btn-anchor').addEventListener('click', anchor);
+  $('btn-verify').addEventListener('click', () => {
+    sfx.tap();
+    verifyAnchor();
+  });
   $('btn-again').addEventListener('click', () => {
     sfx.tap();
     $('btn-anchor').textContent = '錨定到 0G Chain';
+    $('btn-verify').textContent = '鏈上回驗';
     startBattle();
   });
 }

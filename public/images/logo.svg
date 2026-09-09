@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -6 132 148" width="440" height="493" role="img" aria-label="ConSSS Wars">
+  <title>ConSSS Wars</title>
+  <path d="M60 4 L112 34 V94 L60 124 L8 94 V34z" fill="#0E1F38" transform="translate(5,6)"/>
+  <path d="M60 4 L112 34 V94 L60 124 L8 94 V34z" fill="#F2F1EC"/>
+  <path d="M60 4 L112 34 V94 L60 124z" fill="#1B7FE0"/>
+  <path d="M60 4 L112 34 L60 64z" fill="#3E9BE8"/>
+  <path d="M8 34 L60 64 L60 124 L8 94z" fill="#D6EBFA"/>
+  <g transform="translate(60 64) scale(2.1)">
+    <ellipse cx="0" cy="-8" rx="3.2" ry="7.5" fill="#E8926B" transform="rotate(0)"/>
+    <ellipse cx="0" cy="-8" rx="3.2" ry="7.5" fill="#E8926B" transform="rotate(45)"/>
+    <ellipse cx="0" cy="-8" rx="3.2" ry="7.5" fill="#E8926B" transform="rotate(90)"/>
+    <ellipse cx="0" cy="-8" rx="3.2" ry="7.5" fill="#E8926B" transform="rotate(135)"/>
+    <ellipse cx="0" cy="-8" rx="3.2" ry="7.5" fill="#E8926B" transform="rotate(180)"/>
+    <ellipse cx="0" cy="-8" rx="3.2" ry="7.5" fill="#E8926B" transform="rotate(225)"/>
+    <ellipse cx="0" cy="-8" rx="3.2" ry="7.5" fill="#E8926B" transform="rotate(270)"/>
+    <ellipse cx="0" cy="-8" rx="3.2" ry="7.5" fill="#E8926B" transform="rotate(315)"/>
+    <circle r="3.4" fill="#0E1F38"/>
+  </g>
+  <path d="M60 4 L112 34 V94 L60 124 L8 94 V34z" fill="none" stroke="#0E1F38" stroke-width="3"/>
+  <text x="60" y="140" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" font-weight="700" letter-spacing="1.5" fill="#0E1F38">ConSSS Wars</text>
+</svg>

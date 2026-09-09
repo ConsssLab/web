@@ -1,0 +1,15 @@
+{
+  "name": "conssswars-web",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ConSSS Wars — Weightless Memory. A one-minute tactics game on 0G.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public --compatibility-date=2024-09-01 --port 8788",
+    "deploy": "wrangler pages deploy public --project-name conssswars-web",
+    "sim": "node scripts/simulate.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^3.78.0"
+  }
+}

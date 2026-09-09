@@ -40,6 +40,45 @@ export async function buildShard(payload) {
   return res.json();
 }
 
+/**
+ * 賽道一：請 0G Compute Network 上的「記憶編纂者」把這場戰鬥寫成檔案敘述。
+ * 一場只呼叫一次，失敗就回本地模板 —— 結果畫面不能因為推論掛掉就空白。
+ */
+export async function narrate(payload) {
+  try {
+    const res = await fetch('/api/narrate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/** 賽道二：拿 root hash 問 0G Storage indexer，確認檔案真的被 storage node 收下了。 */
+export async function storageInfo(root) {
+  const q = root ? `?root=${encodeURIComponent(root)}` : '';
+  const res = await fetch(`/api/og/storage${q}`, { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error(`storage ${res.status}`);
+  return res.json();
+}
+
+/**
+ * 賽道三：把剛送出去的錨定交易從 0G Chain 讀回來重新驗一次。
+ * 不是「錢包沒報錯就算成功」—— 這裡真的去讀 calldata，把摘要比對回來。
+ */
+export async function verifyAnchor(txHash, digest) {
+  const res = await fetch(
+    `/api/og/verify?tx=${encodeURIComponent(txHash)}&digest=${encodeURIComponent(digest)}`,
+    { headers: { accept: 'application/json' } },
+  );
+  if (!res.ok) throw new Error(`verify ${res.status}`);
+  return res.json();
+}
+
 /** 連錢包並確保切到 Galileo。沒裝錢包就丟出可直接顯示給玩家的訊息。 */
 export async function connect() {
   const provider = eth();
@@ -75,18 +114,23 @@ export async function ensureGalileo() {
 }
 
 /**
- * 把 32 bytes 摘要寫進 0G Galileo 的一筆交易。
- * 這一步需要一點測試網 OG 當 gas，沒有的話請先去 faucet 領。
+ * 賽道三：把碎片摘要寫進 0G Galileo 的一筆交易。
+ *
+ * calldata 是 Function 端組好的 40 bytes（魔術字 CSSW + 版本 + 戰績 + SHA-256 摘要），
+ * 送一筆給自己的 0 值交易帶上去 —— 不用部署合約，chainscan 上直接看得到 input data，
+ * /api/og/verify 也能把它讀回來重新解析。這一步需要一點測試網 OG 當 gas。
  */
-export async function anchorDigest(address, digest) {
+export async function anchorDigest(address, calldata) {
   const provider = eth();
   if (!provider) throw new Error('找不到 EVM 錢包。');
-  if (!/^0x[0-9a-f]{64}$/i.test(digest)) throw new Error('摘要格式不正確。');
+  if (!/^0x[0-9a-f]+$/i.test(calldata) || calldata.length < 34) {
+    throw new Error('錨定資料格式不正確。');
+  }
   await ensureGalileo();
 
   const txHash = await provider.request({
     method: 'eth_sendTransaction',
-    params: [{ from: address, to: address, value: '0x0', data: digest }],
+    params: [{ from: address, to: address, value: '0x0', data: calldata }],
   });
   return { txHash, explorerUrl: `${GALILEO.blockExplorerUrls[0]}/tx/${txHash}` };
 }

@@ -1020,3 +1020,72 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ══════════════ 0G 三賽道狀態面板（結果畫面）══════════════ */
+
+/* 0G Compute 寫的檔案敘述。字級比戰報小一階，讀起來像檔案館的註記。 */
+.shard-narration {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.72;
+  color: var(--ink, #0e1f38);
+  opacity: 0.82;
+}
+.shard-narration:empty {
+  display: none;
+}
+
+.tracks {
+  list-style: none;
+  margin: 12px 0 14px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(14, 31, 56, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.track {
+  display: grid;
+  grid-template-columns: 10px minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.track-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #b9b6ad;
+}
+.track-dot[data-state='ok'] {
+  background: #1b7fe0;
+  box-shadow: 0 0 0 3px rgba(27, 127, 224, 0.16);
+}
+.track-dot[data-state='warn'] {
+  background: #e8926b;
+  box-shadow: 0 0 0 3px rgba(232, 146, 107, 0.16);
+}
+.track-dot[data-state='bad'] {
+  background: #c4562e;
+}
+
+.track-name {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: #0e1f38;
+}
+
+.track-state {
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}

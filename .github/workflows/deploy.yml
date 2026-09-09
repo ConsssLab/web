@@ -1,0 +1,50 @@
+# 推到 main 就自動部署到 Cloudflare Pages。
+#
+# 需要在 repo → Settings → Secrets and variables → Actions 設兩個 secret：
+#   CLOUDFLARE_API_TOKEN   權限選 Account → Cloudflare Pages → Edit
+#   CLOUDFLARE_ACCOUNT_ID  Dashboard 右側欄可以複製
+#
+# 兩個 secret 還沒設好之前，部署那步會被跳過（job 收在綠燈，不會在 main 上掛紅叉）。
+# 設好之後不用改任何東西，下一次推 main 就會開始真的部署。
+#
+# 用 Dashboard 的 Git 整合部署的話，這個 workflow 可以不啟用 —— 兩種擇一即可，
+# 同時開會變成同一個 commit 部署兩次。
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # secrets context 在 job / step 的 if 條件裡讀不到，所以先在這步把它讀進 env
+      # 判斷有沒有設，再用 output 去 gate 下一步。
+      - name: 檢查 Cloudflare 憑證
+        id: creds
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::尚未設定 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID，跳過部署。設好 secret 後下次推 main 就會自動部署。"
+          fi
+
+      # 這個 repo 沒有建置步驟：public/ 直接就是成品，functions/ 由 Pages 自動辨識。
+      - name: Publish
+        if: steps.creds.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy public --project-name=conssswars-web
