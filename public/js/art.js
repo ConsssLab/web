@@ -346,19 +346,43 @@ export function heroPortrait(key) {
  * 這樣只要丟一個檔案就好，不必先把圖裁成三張。
  * 圖不存在時自動退回上面那組 inline SVG，畫面不會開天窗。
  */
-export const HERO_SHEET = '/images/heroes.png';
+/**
+ * 三格拼版的角色形象照，左到右 零 → 蕙 → 刃。
+ *
+ * 副檔名不只認 .png：手邊的原圖常常是 jpg/jpeg/webp，逼使用者先轉檔只是白白多一步，
+ * 所以按順序試，載得起來的那個就是。找不到任何一個就退回 art.js 現畫的 inline SVG。
+ */
+const HERO_SHEET_CANDIDATES = [
+  '/images/heroes.png',
+  '/images/heroes.jpg',
+  '/images/heroes.jpeg',
+  '/images/heroes.webp',
+];
+
+/** 實際載到的那個檔案；還沒測到之前先給預設值，讓 CSS 至少有東西可指。 */
+export let HERO_SHEET = HERO_SHEET_CANDIDATES[0];
 const HERO_INDEX = { zero: 0, hue: 1, ren: 2 };
 
 let sheetState = null; // null = 還沒測；true / false = 測過的結果
 
-export function probeHeroSheet() {
-  if (sheetState !== null) return Promise.resolve(sheetState);
+function tryLoad(src) {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve((sheetState = img.naturalWidth > 0));
-    img.onerror = () => resolve((sheetState = false));
-    img.src = HERO_SHEET;
+    img.onload = () => resolve(img.naturalWidth > 0);
+    img.onerror = () => resolve(false);
+    img.src = src;
   });
+}
+
+export async function probeHeroSheet() {
+  if (sheetState !== null) return sheetState;
+  for (const src of HERO_SHEET_CANDIDATES) {
+    if (await tryLoad(src)) {
+      HERO_SHEET = src;
+      return (sheetState = true);
+    }
+  }
+  return (sheetState = false);
 }
 
 export const heroSheetReady = () => sheetState === true;

@@ -1,9 +1,12 @@
 # 角色形象照
 
-把定稿的**三格拼版原圖**放成這個檔名：
+把定稿的**三格拼版原圖**放進這個目錄，檔名叫 `heroes`，副檔名不限：
 
 ```
-public/images/heroes.png
+public/images/heroes.png     ← 這四個都認，按這個順序試
+public/images/heroes.jpg
+public/images/heroes.jpeg
+public/images/heroes.webp
 ```
 
 ## 規格
@@ -11,8 +14,8 @@ public/images/heroes.png
 - 一張圖包含三格，**等寬**，左到右順序固定為 **零 → 蕙 → 刃**。
 - 直式。單格比例約 `454 × 787`（`public/css/style.css` 的 `.hero-photo`
   用 `aspect-ratio: 454 / 787` 對應，換比例的話兩邊要一起改）。
-- `.png` / `.jpg` / `.webp` 都可以，但檔名要維持 `heroes.png`
-  （或同步改 `public/js/art.js` 的 `HERO_SHEET`）。
+- 副檔名不用轉：`art.js` 會依序試 `.png` / `.jpg` / `.jpeg` / `.webp`，
+  第一個載得起來的就採用。
 
 ## 運作方式
 
