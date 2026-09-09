@@ -484,6 +484,7 @@ function finish() {
   $('shard-narration').textContent = '';
   $('btn-anchor').disabled = true;
   $('btn-verify').disabled = true;
+  $('proof').hidden = true;
   game.anchorTx = null;
   show('result');
   renderTracks();
@@ -676,6 +677,66 @@ async function pollVerify(attempts = 8) {
   return false;
 }
 
+const RESULT_ZH = { hero: '零界守望者', forgetter: '遺忘者', draw: '和局' };
+// 兩欄並排的空間有限，截短一點才不會一個換行一個不換行，反而難比對。
+// 完整摘要在上方那個 code 區塊裡，要逐字比對看那邊。
+const shortHash = (h) => (typeof h === 'string' && h.length > 14 ? `${h.slice(0, 8)}…${h.slice(-4)}` : h || '—');
+
+/**
+ * 把回驗結果畫成「本地 vs 鏈上」的並排對照表。
+ *
+ * 光說一句「摘要相符」看不出在驗什麼。這張表把兩邊的值攤開擺著：
+ * 左邊是本地這枚碎片，右邊是從 0G Chain 那筆交易的 calldata 解回來的，
+ * 逐欄比對打勾。玩家（和評審）可以直接對照，也可以點連結去 chainscan 看原始 input。
+ */
+function renderProof(v) {
+  const box = $('proof');
+  const local = game.shard && game.shard.shard;
+  if (!v || !v.found || !v.decoded || !v.decoded.recognized || !local) {
+    box.hidden = true;
+    return;
+  }
+
+  const rows = [
+    ['摘要 SHA-256', shortHash(game.shard.digest), shortHash(v.decoded.digest), v.digestMatch === true],
+    ['勝負', RESULT_ZH[local.result] || local.result, RESULT_ZH[v.decoded.result] || v.decoded.result, local.result === v.decoded.result],
+    ['回合數', String(local.turns), String(v.decoded.turns), local.turns === v.decoded.turns],
+    ['記憶核心', String(local.heroCore), String(v.decoded.heroCore), local.heroCore === v.decoded.heroCore],
+  ];
+
+  const tbody = $('proof-rows');
+  tbody.innerHTML = '';
+  for (const [field, mine, chain, ok] of rows) {
+    const tr = document.createElement('tr');
+    const td = (text, cls) => {
+      const cell = document.createElement('td');
+      if (cls) cell.className = cls;
+      cell.textContent = text; // 鏈上讀回來的東西一律當不可信資料，不走 innerHTML
+      return cell;
+    };
+    tr.appendChild(td(field, 'proof-field'));
+    tr.appendChild(td(mine, 'proof-val'));
+    tr.appendChild(td(chain, 'proof-val'));
+    const mark = td(ok ? '✓' : '✗', 'proof-mark');
+    mark.dataset.ok = String(Boolean(ok));
+    tr.appendChild(mark);
+    tbody.appendChild(tr);
+  }
+
+  const allOk = rows.every((r) => r[3]);
+  const badge = $('proof-badge');
+  badge.textContent = allOk ? '四項全部相符' : '有欄位不一致';
+  badge.dataset.state = allOk ? 'ok' : 'bad';
+
+  const parts = [`0G Galileo 區塊 #${v.blockNumber}`];
+  if (v.confirmations !== null && v.confirmations !== undefined) parts.push(`${v.confirmations} 個確認`);
+  if (v.status) parts.push(v.status === 'success' ? '交易成功' : v.status);
+  parts.push(`tx ${shortHash(v.tx)}`);
+  $('proof-meta').textContent = parts.join(' · ');
+
+  box.hidden = false;
+}
+
 /**
  * 賽道三的收尾：把剛送出去的交易從 0G Chain 讀回來，重新解析 calldata 並比對摘要。
  * 「錢包沒報錯」不算證明，讀得回來、摘要對得上才算。
@@ -694,9 +755,12 @@ async function verifyAnchor({ quiet = false } = {}) {
     if (!v.found) {
       btn.textContent = '鏈上回驗';
       btn.disabled = false;
+      $('proof').hidden = true;
       if (!quiet) note.textContent = '交易還沒進區塊，等幾秒再按一次回驗。';
       return false;
     }
+
+    renderProof(v);
 
     btn.textContent = v.digestMatch ? '已回驗 ✓' : '回驗：摘要不符';
     anchorBtn.textContent = v.digestMatch ? '已上鏈 ✓' : '已上鏈（摘要不符）';
@@ -724,6 +788,7 @@ function initResult() {
     $('btn-anchor').textContent = '錨定到 0G Chain';
     $('btn-verify').textContent = '鏈上回驗';
     game.anchorTx = null;
+    $('proof').hidden = true;
     const link = $('link-explorer');
     link.href = 'https://chainscan-galileo.0g.ai';
     link.textContent = '在區塊鏈上查看 ↗';

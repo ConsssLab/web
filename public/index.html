@@ -167,6 +167,29 @@
             >
           </div>
           <p class="shard-note" id="shard-note"></p>
+
+          <!-- 鏈上存證對照：左邊是本地這枚碎片，右邊是從 0G Chain 的 calldata 解回來的。
+               「回驗」到底在驗什麼，看這張表就懂了。 -->
+          <div class="proof" id="proof" hidden>
+            <div class="proof-head">
+              <span class="proof-title">鏈上存證 · Proof</span>
+              <span class="proof-badge" id="proof-badge"></span>
+            </div>
+            <div class="proof-scroll">
+              <table class="proof-table">
+                <thead>
+                  <tr>
+                    <th scope="col">欄位</th>
+                    <th scope="col">本地碎片</th>
+                    <th scope="col">0G Chain 讀回</th>
+                    <th scope="col"><span class="sr-only">是否相符</span></th>
+                  </tr>
+                </thead>
+                <tbody id="proof-rows"></tbody>
+              </table>
+            </div>
+            <p class="proof-meta" id="proof-meta"></p>
+          </div>
         </div>
 
         <button class="btn btn--primary" id="btn-again" type="button">再打一場</button>
