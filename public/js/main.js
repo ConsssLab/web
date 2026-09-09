@@ -790,7 +790,12 @@ async function uploadToStorage() {
   } catch (err) {
     btn.textContent = '存進 0G Storage';
     btn.disabled = false;
-    note.textContent = ZGS.explainError(err);
+    note.textContent = '診斷中…';
+    // explainError 會再從瀏覽器打一次 indexer，跟伺服器端的結果交叉比對
+    note.textContent = await ZGS.explainError(err, {
+      indexer: st && st.indexer,
+      serverSaysLive: Boolean(st && st.live),
+    });
   }
 }
 

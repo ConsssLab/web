@@ -15,7 +15,7 @@
 [![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages_+_Functions-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://pages.cloudflare.com)
 [![No build step](https://img.shields.io/badge/build-none-success?style=flat-square)](#本機開發)
 
-[**▶ 線上試玩**](https://web.conssswars.com) · [遊戲規則](#遊戲規則三十秒版) · [**給評審看這裡**](#給評審--三十秒看完-0g-用在哪) · [部署](#部署到-cloudflare-pages)
+[**▶ 線上試玩**](https://conssswars-web.pages.dev) · [**看 Demo 影片**](https://youtube.com/shorts/PV0HpkiGv24) · [給評審看這裡](#給評審--三十秒看完-0g-用在哪) · [遊戲規則](#遊戲規則三十秒版) · [部署](#部署到-cloudflare-pages)
 
 </div>
 
@@ -25,13 +25,11 @@
 
 <div align="center">
 
-<!-- 影片錄好上傳 YouTube 後：把下面的 VIDEO_ID 換成實際影片 ID，
-     並把 public/images/youtube-thumb.svg 換成 https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg -->
-<a href="https://youtu.be/VIDEO_ID">
-  <img src="public/images/youtube-thumb.svg" alt="ConSSS Wars 無重之憶 — Demo（影片上傳後替換）" width="680">
+<a href="https://youtube.com/shorts/PV0HpkiGv24">
+  <img src="https://img.youtube.com/vi/PV0HpkiGv24/hqdefault.jpg" alt="ConSSS Wars 無重之憶 — Demo 影片" width="420">
 </a>
 
-<sub>▲ 影片還沒上傳。上傳後把 `VIDEO_ID` 換掉，縮圖同時換成 YouTube 官方縮圖即可。</sub>
+**[▶ 看 Demo 影片](https://youtube.com/shorts/PV0HpkiGv24)**
 
 </div>
 
