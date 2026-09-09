@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+    />
+    <meta name="theme-color" content="#F2F1EC" />
+    <meta name="color-scheme" content="light" />
+    <title>鏈之英雄傳 ConSSS Wars — 無重之憶 Weightless Memory</title>
+    <meta
+      name="description"
+      content="鏈之英雄傳 ConSSS Wars 第 0 章「無重之憶 Weightless Memory」：一分鐘打完的策略戰，對手是跑在 0G Compute 上的 AI agent，戰報可錨定到 0G Chain。"
+    />
+    <meta property="og:title" content="鏈之英雄傳 ConSSS Wars — 無重之憶 Weightless Memory" />
+    <meta property="og:description" content="一分鐘策略戰，敵人是真的 AI agent。鏈國 0G 篇。" />
+    <meta property="og:type" content="website" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div class="stage" id="stage">
+      <div class="stage-bg" aria-hidden="true"></div>
+
+      <!-- ── 標題 ── -->
+      <section class="screen screen--title is-active" id="screen-title">
+        <div class="title-logo" id="title-logo" aria-hidden="true"></div>
+        <h1 class="title-main">鏈之英雄傳</h1>
+        <p class="title-en">ConSSS Wars</p>
+        <div class="title-rule"></div>
+        <p class="title-sub">無重之憶</p>
+        <p class="title-sub-en">Weightless Memory</p>
+        <p class="title-chapter" id="title-chapter"></p>
+
+        <button class="btn btn--primary" id="btn-start" type="button">開始 · 一分鐘作戰</button>
+        <div class="title-actions">
+          <button class="btn btn--ghost" id="btn-music" type="button" aria-pressed="false">
+            ♪ 音樂 關
+          </button>
+          <button class="btn btn--ghost" id="btn-skip-story" type="button">跳過劇情</button>
+        </div>
+
+        <div class="og-strip" id="og-strip">
+          <span class="og-dot" data-state="idle"></span>
+          <span class="og-strip-text" id="og-strip-text">0G 連線狀態確認中…</span>
+        </div>
+      </section>
+
+      <!-- ── 劇情 ── -->
+      <section class="screen screen--story" id="screen-story">
+        <div class="story-art" id="story-art" aria-hidden="true"></div>
+        <div class="story-box">
+          <p class="story-speaker" id="story-speaker"></p>
+          <p class="story-text" id="story-text"></p>
+          <p class="story-hint">點畫面繼續</p>
+        </div>
+        <button class="btn btn--ghost btn--corner" id="btn-story-skip" type="button">跳過 ▸</button>
+      </section>
+
+      <!-- ── 作戰簡報 ── -->
+      <section class="screen screen--brief" id="screen-brief">
+        <h2 class="brief-title">一分鐘作戰</h2>
+        <ul class="brief-list" id="brief-list"></ul>
+        <div class="brief-heroes" id="brief-heroes"></div>
+        <button class="btn btn--primary" id="btn-battle" type="button">開戰</button>
+      </section>
+
+      <!-- ── 戰鬥 ── -->
+      <section class="screen screen--battle" id="screen-battle">
+        <header class="hud">
+          <div class="hud-side hud-side--foe">
+            <div class="hud-core" id="foe-core" aria-hidden="true"></div>
+            <div class="hud-meta">
+              <span class="hud-name">遺忘者</span>
+              <div class="bar bar--foe"><i id="foe-bar"></i></div>
+              <span class="hud-hp" id="foe-hp">15</span>
+            </div>
+          </div>
+          <div class="hud-turn">
+            <span class="hud-turn-num" id="turn-num">1</span>
+            <span class="hud-turn-label">/ 7 回合</span>
+          </div>
+          <div class="hud-side hud-side--hero">
+            <div class="hud-core" id="hero-core" aria-hidden="true"></div>
+            <div class="hud-meta">
+              <span class="hud-name">零界守望者</span>
+              <div class="bar bar--hero"><i id="hero-bar"></i></div>
+              <span class="hud-hp" id="hero-hp">15</span>
+            </div>
+          </div>
+        </header>
+
+        <div class="agent-chip" id="agent-chip">
+          <span class="agent-dot"></span>
+          <span id="agent-chip-text">AI agent 待命</span>
+        </div>
+
+        <div class="board" id="board"></div>
+
+        <div class="taunt is-empty" id="taunt">
+          <div class="taunt-face" id="taunt-face" aria-hidden="true"></div>
+          <p class="taunt-text" id="taunt-text"></p>
+        </div>
+
+        <footer class="tray">
+          <div class="tray-top">
+            <div class="compute" id="compute" aria-label="算力"></div>
+            <button class="btn btn--end" id="btn-end" type="button">結束回合</button>
+          </div>
+          <div class="hand" id="hand"></div>
+          <p class="tray-hint" id="tray-hint">選一張牌，再點一條迴廊部署。</p>
+        </footer>
+      </section>
+
+      <!-- ── 結果 ── -->
+      <section class="screen screen--result" id="screen-result">
+        <p class="result-en" id="result-en"></p>
+        <h2 class="result-title" id="result-title"></h2>
+        <div class="result-lines" id="result-lines"></div>
+
+        <div class="shard" id="shard">
+          <div class="shard-head">
+            <span class="shard-label">記憶碎片 · Memory Shard</span>
+            <span class="shard-mode" id="shard-mode">產生中…</span>
+          </div>
+          <code class="shard-digest" id="shard-digest">—</code>
+          <div class="shard-actions">
+            <button class="btn btn--chain" id="btn-anchor" type="button" disabled>
+              錨定到 0G Chain
+            </button>
+            <a
+              class="btn btn--ghost"
+              id="link-explorer"
+              href="https://chainscan-galileo.0g.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              >區塊瀏覽器 ↗</a
+            >
+          </div>
+          <p class="shard-note" id="shard-note"></p>
+        </div>
+
+        <button class="btn btn--primary" id="btn-again" type="button">再打一場</button>
+      </section>
+    </div>
+
+    <script type="module" src="/js/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,1022 @@
+/*
+ * 風格：紙白底 + 鈷藍 + 藏青，唯一暖色是鮭橘。
+ * 全平塗、硬邊，投影一律是實心藏青色塊（offset shadow），沒有任何模糊光暈或漸層發光。
+ * 版面以 iPhone 直式 390×844 為基準並吃 safe-area。
+ * 刻意只有一種配色，不跟系統深淺色走 —— 這是遊戲畫面，不是文件。
+ */
+
+:root {
+  --paper: #f2f1ec;
+  --paper-deep: #e6e4dc;
+  --paper-edge: #d8d5ca;
+  --ink: #0e1f38;
+  --ink-deep: #081420;
+  --navy: #123a6b;
+  --slate: #2e4b6e;
+  --blue: #1b7fe0;
+  --blue-deep: #0e4c8f;
+  --blue-mid: #3e9be8;
+  --blue-pale: #9fd2f2;
+  --blue-light: #d6ebfa;
+  --salmon: #e8926b;
+  --terracotta: #c4562e;
+  --muted: #6b7a90;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* UA 的 [hidden]{display:none} 特異性輸給 .taunt{display:flex}，所以這裡補一條 */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family:
+    'Hiragino Sans',
+    'Noto Sans TC',
+    'PingFang TC',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  overscroll-behavior: none;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  min-height: 100dvh;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--paper);
+}
+
+/* 細垂直線 overlay —— 參考裡那層印刷格線 */
+.stage-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 43px, rgba(14, 31, 56, 0.07) 43px 43.6px),
+    var(--paper);
+}
+
+/* 底部那層水面：硬邊多邊形，不用漸層 */
+.stage-bg::after {
+  content: '';
+  position: absolute;
+  left: -30%;
+  right: -30%;
+  bottom: -8%;
+  height: 46%;
+  background: var(--blue-light);
+  clip-path: polygon(0 42%, 22% 24%, 48% 40%, 74% 18%, 100% 34%, 100% 100%, 0 100%);
+}
+
+/* ── 畫面切換 ── */
+.screen {
+  display: none;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding: calc(var(--safe-t) + 16px) 18px calc(var(--safe-b) + 16px);
+}
+
+.screen.is-active {
+  display: flex;
+  animation: fade-in 0.3s ease both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ── 按鈕：硬邊 + 實心位移投影 ── */
+.btn {
+  appearance: none;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  padding: 13px 22px;
+  min-height: 46px;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  background: var(--paper);
+  cursor: pointer;
+  box-shadow: 4px 5px 0 var(--ink);
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    opacity 0.15s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn:active {
+  transform: translate(4px, 5px);
+  box-shadow: 0 0 0 var(--ink);
+}
+
+.btn:disabled {
+  opacity: 0.36;
+  cursor: default;
+  box-shadow: 4px 5px 0 var(--paper-edge);
+}
+
+.btn--primary {
+  background: var(--blue);
+  color: var(--paper);
+}
+
+.btn--chain {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.btn--ghost {
+  background: var(--paper);
+  font-size: 14px;
+  padding: 10px 16px;
+  min-height: 42px;
+  box-shadow: 3px 4px 0 var(--ink);
+}
+
+.btn--corner {
+  position: absolute;
+  top: calc(var(--safe-t) + 14px);
+  right: 16px;
+  z-index: 4;
+}
+
+.btn--end {
+  background: var(--salmon);
+  color: var(--ink);
+  padding: 11px 18px;
+  min-height: 44px;
+  font-size: 15px;
+}
+
+/* ── 標題畫面 ── */
+.screen--title {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.title-logo {
+  width: 104px;
+  height: 104px;
+  margin-bottom: 12px;
+  animation: drift 6s ease-in-out infinite;
+}
+
+@keyframes drift {
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+.title-logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.title-main {
+  margin: 0;
+  font-size: clamp(34px, 10vw, 44px);
+  letter-spacing: 0.18em;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.title-en {
+  margin: 4px 0 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.44em;
+  color: var(--blue);
+  text-transform: uppercase;
+}
+
+.title-rule {
+  width: 56px;
+  height: 3px;
+  margin: 18px 0 14px;
+  background: var(--salmon);
+}
+
+.title-sub {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.32em;
+  color: var(--blue-deep);
+  font-weight: 700;
+}
+
+.title-sub-en {
+  margin: 5px 0 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.title-chapter {
+  margin: 12px 0 26px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--terracotta);
+}
+
+.title-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.og-strip {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: calc(var(--safe-b) + 16px);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 13px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 4px 5px 0 var(--ink);
+  font-size: 11.5px;
+  color: var(--ink);
+  text-align: left;
+  line-height: 1.55;
+}
+
+.og-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  background: var(--muted);
+}
+
+.og-dot[data-state='ok'] {
+  background: var(--blue);
+}
+
+.og-dot[data-state='warn'] {
+  background: var(--salmon);
+}
+
+.og-dot[data-state='bad'] {
+  background: var(--terracotta);
+}
+
+/* ── 劇情 ── */
+.screen--story {
+  justify-content: center;
+  gap: 20px;
+  cursor: pointer;
+}
+
+.story-art {
+  align-self: center;
+  width: min(70vw, 250px);
+  animation: pop 0.32s cubic-bezier(0.2, 1.2, 0.4, 1) both;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.story-art svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.story-box {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 5px 6px 0 var(--ink);
+  padding: 16px 18px 18px;
+}
+
+.story-speaker {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.26em;
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.story-text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.85;
+  min-height: 3.7em;
+  color: var(--ink);
+}
+
+.story-hint {
+  margin: 12px 0 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  text-align: right;
+  animation: blink 1.8s ease-in-out infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* ── 簡報 ── */
+.screen--brief {
+  justify-content: center;
+  gap: 18px;
+}
+
+.brief-title {
+  margin: 0;
+  font-size: 25px;
+  letter-spacing: 0.22em;
+  text-align: center;
+  color: var(--ink);
+}
+
+.brief-list {
+  margin: 0;
+  padding: 16px 18px;
+  list-style: none;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 5px 6px 0 var(--ink);
+  display: grid;
+  gap: 11px;
+}
+
+.brief-list li {
+  position: relative;
+  padding-left: 20px;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--ink);
+}
+
+.brief-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 9px;
+  height: 9px;
+  background: var(--blue);
+}
+
+.brief-list li:nth-child(2)::before {
+  background: var(--salmon);
+}
+
+.brief-heroes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.hero-card {
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 3px 4px 0 var(--ink);
+  text-align: center;
+  padding-bottom: 8px;
+}
+
+.hero-photo {
+  /* 原圖單格比例約 454×787（直式）。三格等寬，靠 background-position 取其一。 */
+  aspect-ratio: 454 / 787;
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  width: 100%;
+  display: block;
+}
+
+.story-art .hero-photo {
+  border: 2px solid var(--ink);
+  box-shadow: 5px 6px 0 var(--ink);
+}
+
+.hero-card svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.hero-card b {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.hero-card span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+/* ── 戰鬥 HUD ── */
+.screen--battle {
+  gap: 10px;
+  padding-top: calc(var(--safe-t) + 10px);
+}
+
+.hud {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hud-side--hero {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.hud-core {
+  flex: none;
+  width: 42px;
+  height: 42px;
+}
+
+.hud-core svg {
+  width: 100%;
+  height: 100%;
+}
+
+.hud-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.hud-name {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar {
+  height: 8px;
+  background: var(--paper-edge);
+  border: 1.5px solid var(--ink);
+  overflow: hidden;
+  margin: 4px 0 2px;
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transition: width 0.4s cubic-bezier(0.3, 1, 0.4, 1);
+}
+
+.bar--hero i {
+  background: var(--blue);
+}
+
+.bar--foe i {
+  background: var(--ink);
+}
+
+.hud-hp {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.hud-turn {
+  text-align: center;
+  line-height: 1;
+}
+
+.hud-turn-num {
+  display: block;
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--terracotta);
+}
+
+.hud-turn-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+.agent-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  align-self: center;
+  padding: 5px 12px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  max-width: 100%;
+}
+
+.agent-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--salmon);
+  flex: none;
+}
+
+.agent-chip.is-thinking .agent-dot {
+  animation: pulse 0.7s steps(2, end) infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+/* ── 棋盤 ── */
+.board {
+  flex: 1;
+  display: grid;
+  grid-template-rows: repeat(3, 1fr);
+  gap: 10px;
+  min-height: 0;
+}
+
+.lane {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  padding: 7px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.lane.is-target {
+  background: var(--blue-light);
+  box-shadow: 4px 5px 0 var(--blue);
+  cursor: pointer;
+}
+
+.lane.is-blocked {
+  opacity: 0.5;
+}
+
+.lane-tag {
+  position: absolute;
+  top: -9px;
+  left: 10px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  background: var(--paper);
+  padding: 0 5px;
+}
+
+.lane-power {
+  position: absolute;
+  top: -9px;
+  right: 10px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  padding: 0 5px;
+  background: var(--paper);
+  color: var(--muted);
+}
+
+.lane-power[data-hold='hero'] {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.lane-power[data-hold='foe'] {
+  color: var(--terracotta);
+  font-weight: 700;
+}
+
+.lane.is-held-hero {
+  box-shadow: inset 0 0 0 3px var(--blue);
+}
+
+.lane.is-held-foe {
+  box-shadow: inset 0 0 0 3px var(--terracotta);
+}
+
+.cell {
+  position: relative;
+  background: var(--paper-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+}
+
+.cell--spawn-hero {
+  background: var(--blue-light);
+}
+
+.cell--spawn-foe {
+  background: var(--paper-edge);
+}
+
+.unit {
+  position: relative;
+  width: 84%;
+  max-width: 54px;
+  animation: pop 0.24s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+}
+
+.unit svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.unit.is-clashing {
+  animation: shake 0.28s steps(3, end);
+}
+
+@keyframes shake {
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+.unit-hp {
+  position: absolute;
+  right: -4px;
+  bottom: -2px;
+  min-width: 19px;
+  padding: 1px 4px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.unit-atk {
+  position: absolute;
+  left: -4px;
+  top: -2px;
+  min-width: 19px;
+  padding: 1px 4px;
+  background: var(--salmon);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.float-dmg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 21px;
+  font-weight: 800;
+  color: var(--terracotta);
+  -webkit-text-stroke: 3px var(--paper);
+  paint-order: stroke fill;
+  pointer-events: none;
+  animation: rise 0.75s ease-out forwards;
+}
+
+@keyframes rise {
+  to {
+    transform: translateY(-26px);
+    opacity: 0;
+  }
+}
+
+/* ── 嘲諷氣泡 ── */
+/*
+ * 固定佔位：氣泡永遠在版面裡，靠 opacity 淡入淡出。
+ * 用 absolute 覆蓋會擋住結算動畫，用 hidden 進出又會讓棋盤跳動，所以兩者都不採。
+ */
+.taunt {
+  display: flex;
+  min-height: 58px;
+  opacity: 1;
+  transition: opacity 0.22s ease;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 2px solid var(--ink);
+  background: var(--ink);
+  box-shadow: 4px 5px 0 var(--terracotta);
+}
+
+.taunt.is-empty {
+  opacity: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.taunt-face {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+}
+
+.taunt-face svg {
+  width: 100%;
+  height: 100%;
+}
+
+.taunt-text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--paper);
+}
+
+/* ── 手牌 ── */
+.tray {
+  display: grid;
+  gap: 8px;
+}
+
+.tray-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.compute {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.compute-num {
+  margin-right: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--blue-deep);
+  letter-spacing: 0.06em;
+}
+
+.pip {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+}
+
+.pip.is-full {
+  background: var(--blue);
+}
+
+.hand {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+}
+
+.card {
+  appearance: none;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  padding: 7px 4px 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  box-shadow: 3px 4px 0 var(--ink);
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
+  min-height: 86px;
+}
+
+.card:disabled {
+  opacity: 0.34;
+  cursor: default;
+  box-shadow: 3px 4px 0 var(--paper-edge);
+}
+
+.card.is-selected {
+  transform: translate(-2px, -4px);
+  box-shadow: 5px 8px 0 var(--blue);
+}
+
+.card-glyph {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--paper);
+  border: 1.5px solid var(--ink);
+}
+
+.card-name {
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.card-stat {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+.card-cost {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--blue-deep);
+}
+
+.tray-hint {
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  min-height: 1.3em;
+}
+
+/* ── 結果 ── */
+.screen--result {
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.result-en {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.38em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.result-title {
+  margin: 0;
+  font-size: 40px;
+  letter-spacing: 0.18em;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.result-lines p {
+  margin: 6px 0;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ink);
+}
+
+.shard {
+  text-align: left;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 5px 6px 0 var(--ink);
+  padding: 14px;
+  display: grid;
+  gap: 9px;
+}
+
+.shard-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.shard-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.shard-mode {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  padding: 3px 7px;
+  border: 1.5px solid var(--ink);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.shard-digest {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  word-break: break-all;
+  color: var(--ink);
+  background: var(--blue-light);
+  padding: 8px 9px;
+}
+
+.shard-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.shard-actions .btn {
+  flex: 1;
+  font-size: 13px;
+  padding: 10px 12px;
+  min-height: 44px;
+}
+
+.shard-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

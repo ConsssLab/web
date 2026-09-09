@@ -1,0 +1,11 @@
+{
+  "name": "鏈之英雄傳 ConSSS Wars — 無重之憶",
+  "short_name": "ConSSS Wars",
+  "description": "一分鐘策略戰，敵人是跑在 0G 上的 AI agent。",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F2F1EC",
+  "theme_color": "#F2F1EC",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

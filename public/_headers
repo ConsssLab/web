@@ -1,0 +1,15 @@
+# 靜態資源可以快取，但 index.html 要每次重新驗證，改版才會立刻生效。
+/js/*
+  Cache-Control: public, max-age=600
+
+/css/*
+  Cache-Control: public, max-age=600
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
