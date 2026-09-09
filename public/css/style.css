@@ -431,8 +431,10 @@ body {
 }
 
 .hero-photo {
-  /* 原圖單格比例約 454×787（直式）。三格等寬，靠 background-position 取其一。 */
-  aspect-ratio: 454 / 787;
+  /* 定稿原圖 1361×768，三格等寬 → 單格約 454×768。
+     這裡用整張圖的寬除以三來寫比例（1361 / (768×3)），換圖時只要改這一組數字。
+     比例寫錯的話 background-size:300% 100% 會把圖縱向拉伸，臉會變形。 */
+  aspect-ratio: 1361 / 2304;
   background-size: 300% 100%;
   background-repeat: no-repeat;
   width: 100%;
