@@ -87,6 +87,8 @@ async function loadOgStatus() {
   try {
     const s = await OG.fetchStatus();
     game.ogStatus = s;
+    // 用鏈上真實的 chainId 校準錢包參數，寫死會在 0G 換 chain ID 時整個切鏈失敗
+    OG.calibrate(s);
     const chain = s.chain.ok
       ? `0G Galileo #${s.chain.blockNumber.toLocaleString()}`
       : '0G Galileo 連線失敗';
@@ -617,60 +619,91 @@ async function anchor() {
   }
 
   btn.disabled = true;
-  btn.textContent = '錢包確認中…';
   try {
+    // 每一步都講出來。之前整段只顯示「錢包確認中…」，切鏈失敗時玩家看不出卡在哪。
+    btn.textContent = '連接錢包…';
+    note.textContent = '請在錢包視窗按下連接。';
     if (!game.wallet) game.wallet = await OG.connect();
+
+    btn.textContent = '切換到 0G…';
+    note.textContent = '正在確認錢包切到 0G Galileo 測試網。';
+    await OG.ensureGalileo();
+
+    btn.textContent = '等待簽名…';
+    note.textContent = '錢包會跳出一筆 0 值交易，calldata 就是這枚記憶碎片的摘要。';
     const { txHash, explorerUrl } = await OG.anchorDigest(
       game.wallet,
       game.shard.calldata || game.shard.digest,
     );
+
+    // 簽完立刻把交易連結交到玩家手上，不要讓他對著沒反應的畫面等
     game.anchorTx = txHash;
-    btn.textContent = '已錨定 ✓';
-    note.textContent = `${OG.shortAddress(game.wallet)} 已送出：${txHash}`;
     const link = $('link-explorer');
     link.href = explorerUrl;
     link.textContent = '看這筆交易 ↗';
+    btn.textContent = '已送出 · 等待打包';
+    note.textContent = `${OG.shortAddress(game.wallet)} → ${txHash.slice(0, 18)}…　交易已送出，正在等它進區塊。`;
     $('btn-verify').disabled = false;
-    // 交易剛送出通常還沒進區塊，等一下再自動回驗一次，省得玩家自己按
-    setTimeout(() => verifyAnchor(), 4000);
+
+    // 自動輪詢回驗，直到讀得到為止（Galileo 出塊很快，通常兩三次就有）
+    await pollVerify();
   } catch (err) {
     const msg = err && (err.message || err.reason) ? err.message || err.reason : String(err);
-    note.textContent = /insufficient/i.test(msg)
-      ? `餘額不足，請先到 ${OG.FAUCET_URL} 領測試網 OG。`
-      : msg.slice(0, 200);
+    note.textContent = /insufficient|balance/i.test(msg)
+      ? `餘額不足付 gas。到 ${OG.FAUCET_URL} 領一點測試網 OG 再試一次。`
+      : /user rejected|user denied|4001/i.test(msg)
+        ? '你在錢包按了取消，沒有送出任何交易。'
+        : msg.slice(0, 240);
     btn.textContent = '錨定到 0G Chain';
     btn.disabled = false;
   }
+}
+
+/** 交易剛送出通常還沒進區塊，每 3 秒回驗一次，最多試 8 次（約 24 秒）。 */
+async function pollVerify(attempts = 8) {
+  for (let i = 0; i < attempts; i++) {
+    await sleep(3000);
+    const done = await verifyAnchor({ quiet: i < attempts - 1 });
+    if (done) return true;
+    $('shard-note').textContent = `交易已送出，等待進區塊…（第 ${i + 1} 次確認）`;
+  }
+  return false;
 }
 
 /**
  * 賽道三的收尾：把剛送出去的交易從 0G Chain 讀回來，重新解析 calldata 並比對摘要。
  * 「錢包沒報錯」不算證明，讀得回來、摘要對得上才算。
  */
-async function verifyAnchor() {
-  if (!game.anchorTx || !game.shard) return;
+async function verifyAnchor({ quiet = false } = {}) {
+  if (!game.anchorTx || !game.shard) return false;
   const btn = $('btn-verify');
+  const anchorBtn = $('btn-anchor');
   const note = $('shard-note');
   btn.disabled = true;
-  btn.textContent = '回驗中…';
+  if (!quiet) btn.textContent = '回驗中…';
   try {
     const v = await OG.verifyAnchor(game.anchorTx, game.shard.digest);
     renderTracks({ verify: v });
+
     if (!v.found) {
-      note.textContent = '交易還沒進區塊，等幾秒再按一次回驗。';
       btn.textContent = '鏈上回驗';
       btn.disabled = false;
-      return;
+      if (!quiet) note.textContent = '交易還沒進區塊，等幾秒再按一次回驗。';
+      return false;
     }
+
     btn.textContent = v.digestMatch ? '已回驗 ✓' : '回驗：摘要不符';
+    anchorBtn.textContent = v.digestMatch ? '已上鏈 ✓' : '已上鏈（摘要不符）';
     note.textContent = v.digestMatch
-      ? `區塊 #${v.blockNumber} · ${v.confirmations} 個確認 · 鏈上讀回的摘要與本地碎片相符。`
+      ? `已寫入 0G Galileo 區塊 #${v.blockNumber}（${v.confirmations} 個確認）。鏈上讀回的 calldata 解出 ${v.decoded.turns} 回合、核心 ${v.decoded.heroCore}，摘要與本地碎片相符 ✓`
       : `區塊 #${v.blockNumber}，但鏈上摘要與本地碎片不一致。`;
     if (!v.digestMatch) btn.disabled = false;
+    return true;
   } catch (err) {
     btn.textContent = '鏈上回驗';
     btn.disabled = false;
-    note.textContent = String(err && err.message ? err.message : err).slice(0, 200);
+    if (!quiet) note.textContent = String(err && err.message ? err.message : err).slice(0, 200);
+    return false;
   }
 }
 
@@ -678,12 +711,13 @@ function initResult() {
   $('btn-anchor').addEventListener('click', anchor);
   $('btn-verify').addEventListener('click', () => {
     sfx.tap();
-    verifyAnchor();
+    verifyAnchor({ quiet: false });
   });
   $('btn-again').addEventListener('click', () => {
     sfx.tap();
     $('btn-anchor').textContent = '錨定到 0G Chain';
     $('btn-verify').textContent = '鏈上回驗';
+    game.anchorTx = null;
     startBattle();
   });
 }

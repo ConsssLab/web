@@ -10,13 +10,34 @@
  * 不需要部署合約，chainscan 上就能直接看到那串 input data。
  */
 
+/**
+ * 0G Galileo 的錢包網路參數。
+ *
+ * chainId 刻意不寫死：0G 換過 chain ID（16601 → 16602），寫死的話錢包裡已經有
+ * 同一個 RPC 的舊網路時，switch 會找不到、add 又會被擋（「同一個 RPC 已被別條鏈佔用」），
+ * 結果就是交易根本送不出去。所以開場先跟 /api/og/status 要，那支是直接對 RPC 打
+ * eth_chainId 讀回來的，鏈上是什麼就是什麼。下面的值只是還沒問到之前的預設。
+ */
+const DEFAULT_CHAIN_ID = '0x40da'; // 16602
+
 export const GALILEO = {
-  chainId: '0x40d9', // 16601
+  chainId: DEFAULT_CHAIN_ID,
   chainName: '0G-Galileo-Testnet',
   nativeCurrency: { name: 'OG', symbol: 'OG', decimals: 18 },
   rpcUrls: ['https://evmrpc-testnet.0g.ai'],
   blockExplorerUrls: ['https://chainscan-galileo.0g.ai'],
 };
+
+/** 用 /api/og/status 讀回來的真實鏈況校準上面那組參數。 */
+export function calibrate(status) {
+  const id = status && status.chain && status.chain.chainId;
+  if (Number.isInteger(id) && id > 0) GALILEO.chainId = '0x' + id.toString(16);
+  const rpc = status && status.network && status.network.rpcUrl;
+  if (rpc) GALILEO.rpcUrls = [rpc];
+  const exp = status && status.network && status.network.explorer;
+  if (exp) GALILEO.blockExplorerUrls = [exp];
+  return GALILEO.chainId;
+}
 
 export const FAUCET_URL = 'https://faucet.0g.ai';
 
@@ -95,23 +116,49 @@ export async function connect() {
 export async function ensureGalileo() {
   const provider = eth();
   if (!provider) throw new Error('找不到 EVM 錢包。');
-  const current = await provider.request({ method: 'eth_chainId' });
-  if (String(current).toLowerCase() === GALILEO.chainId) return;
+
+  // 還沒校準過就先問一次，免得拿錯的 chainId 去跟錢包比對
+  if (!calibrated) {
+    try {
+      calibrate(await fetchStatus());
+    } catch {
+      // 讀不到就用預設值往下走，總比直接卡住好
+    }
+    calibrated = true;
+  }
+
+  const want = GALILEO.chainId.toLowerCase();
+  const current = String(await provider.request({ method: 'eth_chainId' })).toLowerCase();
+  if (current === want) return;
+
+  try {
+    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: want }] });
+    return;
+  } catch (err) {
+    // 4902 = 錢包不認識這條鏈，那就順手幫它加進去。其他錯誤直接往上丟。
+    if (!err || (err.code !== 4902 && err.code !== -32603)) throw err;
+  }
 
   try {
     await provider.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: GALILEO.chainId }],
+      method: 'wallet_addEthereumChain',
+      params: [{ ...GALILEO, chainId: want }],
     });
   } catch (err) {
-    // 4902 = 錢包還不認識這條鏈，那就順手幫它加進去
-    if (err && (err.code === 4902 || err.code === -32603)) {
-      await provider.request({ method: 'wallet_addEthereumChain', params: [GALILEO] });
-    } else {
-      throw err;
+    const msg = String((err && (err.message || err.reason)) || err);
+    // 錢包裡已經有同一個 RPC 但掛在別的 chainId 上 —— 這種情況加不進去，
+    // 講清楚要怎麼處理，不要讓玩家對著一句原文錯誤發呆。
+    if (/same RPC|already exists|existing network/i.test(msg)) {
+      throw new Error(
+        `你的錢包裡已經有一條用同一個 RPC 的 0G 網路，但 chain ID 跟這條（${want}）不同。` +
+          '請在錢包的網路清單裡手動切到那條 0G Galileo，或把舊的那條刪掉再試一次。',
+      );
     }
+    throw err;
   }
 }
+
+let calibrated = false;
 
 /**
  * 賽道三：把碎片摘要寫進 0G Galileo 的一筆交易。
