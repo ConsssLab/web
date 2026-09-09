@@ -127,10 +127,34 @@
             <span class="shard-label">記憶碎片 · Memory Shard</span>
             <span class="shard-mode" id="shard-mode">產生中…</span>
           </div>
+          <p class="shard-narration" id="shard-narration"></p>
           <code class="shard-digest" id="shard-digest">—</code>
+
+          <!-- 0G 三賽道即時狀態：每一格都照實顯示，沒接上就寫沒接上 -->
+          <ul class="tracks" id="tracks">
+            <li class="track" data-track="compute">
+              <span class="track-dot" data-state="idle"></span>
+              <span class="track-name">賽道一 · 0G Compute</span>
+              <span class="track-state" id="track-compute">確認中…</span>
+            </li>
+            <li class="track" data-track="storage">
+              <span class="track-dot" data-state="idle"></span>
+              <span class="track-name">賽道二 · 0G Storage</span>
+              <span class="track-state" id="track-storage">確認中…</span>
+            </li>
+            <li class="track" data-track="chain">
+              <span class="track-dot" data-state="idle"></span>
+              <span class="track-name">賽道三 · 0G Chain</span>
+              <span class="track-state" id="track-chain">確認中…</span>
+            </li>
+          </ul>
+
           <div class="shard-actions">
             <button class="btn btn--chain" id="btn-anchor" type="button" disabled>
               錨定到 0G Chain
+            </button>
+            <button class="btn btn--ghost" id="btn-verify" type="button" disabled>
+              鏈上回驗
             </button>
             <a
               class="btn btn--ghost"

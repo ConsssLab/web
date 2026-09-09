@@ -1,0 +1,13 @@
+# Cloudflare Pages 專案設定。
+#
+# 這個 repo 沒有建置步驟：public/ 直接就是成品，functions/ 會被 Pages 自動辨識成
+# Pages Functions。用 Dashboard 的 Git 整合部署時這個檔可有可無，
+# 但用 `wrangler pages deploy` 或 GitHub Actions 部署時，靠它固定專案名與輸出目錄。
+
+name = "conssswars-web"
+pages_build_output_dir = "public"
+compatibility_date = "2024-09-01"
+
+# 金鑰不寫在這裡。OPENAI_API_KEY / OG_COMPUTE_API_KEY / OG_STORAGE_TOKEN
+# 一律在 Dashboard → Settings → Variables and Secrets 設成 Secret（加密），
+# 或用 `npx wrangler pages secret put <NAME> --project-name conssswars-web`。
