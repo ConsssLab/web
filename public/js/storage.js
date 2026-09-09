@@ -61,10 +61,19 @@ export async function upload(shard, { indexer, rpc, onStep } = {}) {
     if (typeof onStep === 'function') onStep(msg);
   };
 
+  if (!window.ethereum) throw new Error('找不到 EVM 錢包，請先安裝 MetaMask。');
+
+  // 錢包要在最前面連。
+  //
+  // 瀏覽器只把「使用者剛剛點擊」之後的一小段時間算成使用者手勢，
+  // 中間 await 一個一百多萬 bytes 的動態 import 之後手勢就過期了 ——
+  // 那時再叫錢包，MetaMask 的視窗不會被帶到前景（手機的 in-app 瀏覽器尤其明顯），
+  // 畫面就會卡在「等待錢包」但什麼都沒跳出來。所以先連錢包，再做重的事。
+  step('連接錢包…');
+  await window.ethereum.request({ method: 'eth_requestAccounts' });
+
   step('載入 0G Storage SDK…');
   const { zg, ethers } = await loadModules();
-
-  if (!window.ethereum) throw new Error('找不到 EVM 錢包，請先安裝 MetaMask。');
 
   step('計算 merkle root…');
   const data = new zg.MemData(encode(shard));
@@ -121,6 +130,9 @@ export async function explainError(err, { indexer, serverSaysLive } = {}) {
   }
   if (/user rejected|user denied|4001|ACTION_REJECTED/i.test(msg)) {
     return '你在錢包按了取消，沒有上傳任何東西。';
+  }
+  if ((err && err.code === -32002) || /already processing|already pending/i.test(msg)) {
+    return '錢包已經有一個待處理的請求。請打開 MetaMask 按下確認，不要重複點這顆按鈕。';
   }
 
   if (/failed to fetch|network|fetch|timeout|ECONN|load failed/i.test(msg)) {

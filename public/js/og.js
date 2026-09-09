@@ -101,12 +101,63 @@ export async function verifyAnchor(txHash, digest) {
 }
 
 /** 連錢包並確保切到 Galileo。沒裝錢包就丟出可直接顯示給玩家的訊息。 */
+/** EIP-1193：錢包已經有一個同類型的請求還沒被處理。 */
+const ERR_PENDING = -32002;
+
+/** 等太久就自己收手，不要讓畫面卡在「連接錢包…」沒有下文。 */
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(label), { __timeout: true })), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** 已經授權過的帳號。這支不會跳視窗，可以拿來判斷需不需要真的請求連線。 */
+async function currentAccount() {
+  const provider = eth();
+  if (!provider) return null;
+  try {
+    const accounts = await provider.request({ method: 'eth_accounts' });
+    return (accounts && accounts[0]) || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function connect() {
   const provider = eth();
   if (!provider) throw new Error('找不到 EVM 錢包，請先安裝 MetaMask 之類的擴充套件。');
 
-  const accounts = await provider.request({ method: 'eth_requestAccounts' });
-  const address = accounts && accounts[0];
+  // 先問已授權的帳號：這支不會跳視窗。之前授權過的話直接用，
+  // 免得又送一次 eth_requestAccounts 讓錢包多開一個待處理請求。
+  let address = await currentAccount();
+
+  if (!address) {
+    try {
+      const accounts = await withTimeout(
+        provider.request({ method: 'eth_requestAccounts' }),
+        60000,
+        '__wallet_timeout__',
+      );
+      address = accounts && accounts[0];
+    } catch (err) {
+      // 錢包裡已經有一個連線請求在排隊 —— 這種情況它不會再跳視窗，
+      // 玩家重複點按鈕只會越積越多。要講清楚該去哪裡按。
+      if (err && err.code === ERR_PENDING) {
+        throw new Error(
+          '錢包已經有一個待處理的連線請求。請打開 MetaMask（瀏覽器擴充套件圖示，或手機的 MetaMask App）按下「連接」，不要重複點這顆按鈕。',
+        );
+      }
+      if (err && err.__timeout) {
+        throw new Error(
+          '等錢包回應超過 60 秒。MetaMask 的視窗可能開在背景或被關掉了 —— 打開 MetaMask 看看有沒有待處理的請求。',
+        );
+      }
+      throw err;
+    }
+  }
+
   if (!address) throw new Error('錢包沒有回傳帳號。');
 
   await ensureGalileo();
@@ -132,9 +183,19 @@ export async function ensureGalileo() {
   if (current === want) return;
 
   try {
-    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: want }] });
+    await withTimeout(
+      provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: want }] }),
+      60000,
+      '__wallet_timeout__',
+    );
     return;
   } catch (err) {
+    if (err && err.code === ERR_PENDING) {
+      throw new Error('錢包已經有一個待處理的切換網路請求，請先到 MetaMask 裡處理掉它。');
+    }
+    if (err && err.__timeout) {
+      throw new Error('等錢包切換網路超過 60 秒，請打開 MetaMask 看有沒有待處理的請求。');
+    }
     // 4902 = 錢包不認識這條鏈，那就順手幫它加進去。其他錯誤直接往上丟。
     if (!err || (err.code !== 4902 && err.code !== -32603)) throw err;
   }
