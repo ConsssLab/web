@@ -22,7 +22,21 @@ cd proxy
 npx vercel --prod
 ```
 
-記下輸出的網址，例如 `https://conssswars-zg-proxy.vercel.app`。
+沒有 `vercel.json` 是刻意的 —— Vercel 會自動把 `api/` 底下的檔案當成 Node 函式，
+不需要設定檔；寫死 `maxDuration` 之類的值反而可能在免費方案上讓部署直接失敗。
+
+第一次會問幾個問題，全部照預設走：
+
+| 問題 | 答 |
+|---|---|
+| Set up and deploy? | `y` |
+| Which scope? | 你的帳號（Enter） |
+| Link to existing project? | `n` |
+| Project name? | Enter（用 `proxy`）或自己打一個 |
+| In which directory is your code located? | Enter（`./`） |
+| Want to modify these settings? | `n` |
+
+記下輸出的 **Production** 網址，例如 `https://conssswars-zg-proxy.vercel.app`。
 
 ## 接回主站
 
