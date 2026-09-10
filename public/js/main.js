@@ -160,7 +160,18 @@ function showBriefing() {
     list.appendChild(li);
   }
 
+  renderHeroCards();
+  show('brief');
+}
+
+/**
+ * 三張英雄卡。抽出來是因為形象照的探測是非同步的 ——
+ * 畫面可能先用 SVG 畫好，探測晚一點才回來說「圖其實在」，
+ * 那時要能就地換成照片，不然玩家看到的永遠是備援版本。
+ */
+function renderHeroCards() {
   const heroes = $('brief-heroes');
+  if (!heroes) return;
   heroes.innerHTML = '';
   for (const h of HEROES) {
     const card = document.createElement('div');
@@ -174,7 +185,6 @@ function showBriefing() {
     card.append(name, role);
     heroes.appendChild(card);
   }
-  show('brief');
 }
 
 function initBriefing() {
@@ -872,7 +882,10 @@ function initResult() {
 
 /* ══════════════ 啟動 ══════════════ */
 
-ART.probeHeroSheet();
+// 探測結束後如果簡報畫面已經畫好了，就地把 SVG 換成形象照
+ART.probeHeroSheet().then((ok) => {
+  if (ok && el.screens.brief.classList.contains('is-active')) renderHeroCards();
+});
 initTitle();
 initStory();
 initBriefing();

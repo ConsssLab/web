@@ -374,15 +374,21 @@ function tryLoad(src) {
   });
 }
 
+/**
+ * 四個候選同時載，不要一個一個等。
+ *
+ * 線上有 SPA fallback（找不到檔案就回 index.html 200），所以不存在的副檔名
+ * 不會快速 404，而是回一整份 HTML 才失敗。依序試的話光是前兩個就足以讓
+ * 簡報畫面先畫完、退回 SVG。平行跑就只花「最慢的那一個」的時間，
+ * 再依候選順序挑第一個成功的，結果仍然是確定的。
+ */
 export async function probeHeroSheet() {
   if (sheetState !== null) return sheetState;
-  for (const src of HERO_SHEET_CANDIDATES) {
-    if (await tryLoad(src)) {
-      HERO_SHEET = src;
-      return (sheetState = true);
-    }
-  }
-  return (sheetState = false);
+  const results = await Promise.all(HERO_SHEET_CANDIDATES.map(tryLoad));
+  const hit = results.findIndex(Boolean);
+  if (hit === -1) return (sheetState = false);
+  HERO_SHEET = HERO_SHEET_CANDIDATES[hit];
+  return (sheetState = true);
 }
 
 export const heroSheetReady = () => sheetState === true;

@@ -17,7 +17,17 @@
 const SDK_URL = '/vendor/zgstorage.esm.min.js';
 const ETHERS_URL = '/vendor/ethers.min.js';
 
-const DEFAULT_INDEXER = 'https://indexer-storage-testnet-turbo.0g.ai';
+/**
+ * indexer 走自家的同源代理，不直接打 0g.ai。
+ *
+ * 直接打的話 indexer 本身通得過，但它回傳的 storage node 是另一批主機，
+ * 那些主機沒為瀏覽器開 CORS，SDK 傳 segment 時只會拿到一句沒有內容的
+ * "Network Error"。代理會把節點網址一併改寫成走同一支 Function，
+ * 整條上傳鏈路就都是同源的了。見 functions/api/og/zg/[[path]].js。
+ */
+const DEFAULT_INDEXER = '/api/og/zg/indexer';
+
+/** EVM RPC 維持直連：它走 MetaMask 與公開節點，實測瀏覽器打得通。 */
 const DEFAULT_RPC = 'https://evmrpc-testnet.0g.ai';
 
 let modsPromise = null;
@@ -86,7 +96,9 @@ export async function upload(shard, { indexer, rpc, onStep } = {}) {
   const signer = await provider.getSigner();
 
   step('送出 Flow 合約 submit 並上傳 segment…');
-  const client = new zg.Indexer(indexer || DEFAULT_INDEXER);
+  // 這裡刻意忽略呼叫端傳進來的真實 indexer 網址，一律走代理 ——
+  // 直連的話 segment 那步會被 storage node 的 CORS 擋掉。
+  const client = new zg.Indexer(new URL(DEFAULT_INDEXER, location.origin).toString());
   const [tx, err] = await client.upload(data, rpc || DEFAULT_RPC, signer);
   if (err) throw new Error(String(err && err.message ? err.message : err));
 
