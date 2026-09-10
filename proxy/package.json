@@ -1,0 +1,8 @@
+{
+  "name": "conssswars-zg-proxy",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "0G Storage 節點的同源代理。Cloudflare Workers 打不到裸 IP 與非標準埠，這支跑在 Node 上補這一段。",
+  "engines": { "node": ">=20" }
+}

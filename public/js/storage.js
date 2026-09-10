@@ -30,7 +30,11 @@ const ETHERS_URL = '/vendor/ethers.min.js';
  * 所以轉發前會把 IP 換成解析回同一個 IP 的 DNS 名稱。
  * 兩件事都在 functions/api/og/zg/[[path]].js。
  */
-const DEFAULT_INDEXER = '/api/og/zg/indexer';
+const DEFAULT_PROXY_BASE = '/api/og/zg';
+
+/** 代理的 indexer 端點。proxyBase 由 /api/og/status 下發，見那支的 zgProxy。 */
+const indexerUrl = (proxyBase) =>
+  new URL(`${(proxyBase || DEFAULT_PROXY_BASE).replace(/\/+$/, '')}/indexer`, location.origin).toString();
 
 /** EVM RPC 維持直連：它走 MetaMask 與公開節點，實測瀏覽器打得通。 */
 const DEFAULT_RPC = 'https://evmrpc-testnet.0g.ai';
@@ -71,7 +75,7 @@ export async function computeRoot(shard) {
  * onStep 會在每個階段被呼叫一次，讓畫面可以照實顯示進度 ——
  * 這段要跟鏈上互動，慢的時候十幾秒跑不掉，不能讓玩家對著沒反應的畫面等。
  */
-export async function upload(shard, { indexer, rpc, onStep } = {}) {
+export async function upload(shard, { proxyBase, rpc, onStep } = {}) {
   const step = (msg) => {
     if (typeof onStep === 'function') onStep(msg);
   };
@@ -103,7 +107,7 @@ export async function upload(shard, { indexer, rpc, onStep } = {}) {
   step('送出 Flow 合約 submit 並上傳 segment…');
   // 這裡刻意忽略呼叫端傳進來的真實 indexer 網址，一律走代理 ——
   // 直連的話 segment 那步會被 storage node 的 CORS 擋掉。
-  const client = new zg.Indexer(new URL(DEFAULT_INDEXER, location.origin).toString());
+  const client = new zg.Indexer(indexerUrl(proxyBase));
   const [tx, err] = await client.upload(data, rpc || DEFAULT_RPC, signer);
   if (err) throw new Error(String(err && err.message ? err.message : err));
 
@@ -119,9 +123,9 @@ export async function upload(shard, { indexer, rpc, onStep } = {}) {
  * 那就是對方沒開 CORS，而不是玩家網路有問題 —— 這兩件事的處理方式差很多，
  * 不講清楚玩家只會一直重試。
  */
-export async function probeIndexerFromBrowser(indexer = DEFAULT_INDEXER) {
+export async function probeIndexerFromBrowser(proxyBase) {
   try {
-    const res = await fetch(new URL(indexer, location.origin).toString(), {
+    const res = await fetch(indexerUrl(proxyBase), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'indexer_getShardedNodes', params: [] }),
@@ -139,7 +143,7 @@ export async function probeIndexerFromBrowser(indexer = DEFAULT_INDEXER) {
  * 交叉比對才能給出正確的診斷，光看錯誤字串會把 CORS 誤判成網路問題。
  * 不管分到哪一類，原始訊息都保留在後面，否則出事時完全無從查起。
  */
-export async function explainError(err, { indexer, serverSaysLive } = {}) {
+export async function explainError(err, { proxyBase, serverSaysLive } = {}) {
   const msg = String((err && (err.message || err.reason)) || err);
 
   if (/insufficient|balance|funds/i.test(msg)) {
@@ -164,11 +168,11 @@ export async function explainError(err, { indexer, serverSaysLive } = {}) {
     // 現在 indexer 與 storage node 都走同源代理，所以先確認代理自己活著。
     // 代理通、上傳還是斷，那就是斷在代理後面（節點或 Flow 合約），
     // 不是瀏覽器的 CORS / mixed content 問題。
-    const probe = await probeIndexerFromBrowser();
+    const probe = await probeIndexerFromBrowser(proxyBase);
     if (!probe.reachable) {
-      return `連不上自家的 0G 代理（/api/og/zg/indexer）—— 這通常表示 Pages Functions 沒部署上去。原始錯誤：${msg.slice(0, 100)}`;
+      return `連不上 0G 代理（${indexerUrl(proxyBase)}）—— 代理沒部署，或它沒放行這個網域的 CORS。原始錯誤：${msg.slice(0, 100)}`;
     }
-    if (indexer && !serverSaysLive) {
+    if (!serverSaysLive) {
       return `代理正常，但伺服器端也連不到 0G 的 indexer，可能是節點在維護。原始錯誤：${msg.slice(0, 100)}`;
     }
     return `代理與 indexer 都正常，上傳斷在後面那一步（storage node 傳 segment 或 Flow 合約 submit）。原始錯誤：${msg.slice(0, 140)}`;

@@ -767,7 +767,7 @@ async function uploadToStorage() {
 
   try {
     const { root, tx } = await ZGS.upload(game.shard.shard, {
-      indexer: st && st.indexer,
+      proxyBase: st && st.zgProxy,
       rpc: game.ogStatus && game.ogStatus.network && game.ogStatus.network.rpcUrl,
       onStep: (msg) => {
         btn.textContent = '上傳中…';
@@ -803,7 +803,7 @@ async function uploadToStorage() {
     note.textContent = '診斷中…';
     // explainError 會再從瀏覽器打一次 indexer，跟伺服器端的結果交叉比對
     note.textContent = await ZGS.explainError(err, {
-      indexer: st && st.indexer,
+      proxyBase: st && st.zgProxy,
       serverSaysLive: Boolean(st && st.live),
     });
   }
