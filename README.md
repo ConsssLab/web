@@ -15,7 +15,7 @@
 [![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages_+_Functions-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://pages.cloudflare.com)
 [![No build step](https://img.shields.io/badge/build-none-success?style=flat-square)](#本機開發)
 
-[**▶ 線上試玩**](https://conssswars-web.pages.dev) · [**看 Demo 影片**](https://youtube.com/shorts/PV0HpkiGv24) · [給評審看這裡](#給評審--三十秒看完-0g-用在哪) · [遊戲規則](#遊戲規則三十秒版) · [部署](#部署到-cloudflare-pages)
+[**▶ 線上試玩**](https://conssswars-web.pages.dev) · [**看 Demo 影片**](https://youtube.com/shorts/cu5f6VMaQiU) · [給評審看這裡](#給評審--三十秒看完-0g-用在哪) · [遊戲規則](#遊戲規則三十秒版) · [部署](#部署到-cloudflare-pages)
 
 </div>
 
@@ -25,11 +25,11 @@
 
 <div align="center">
 
-<a href="https://youtube.com/shorts/PV0HpkiGv24">
-  <img src="https://img.youtube.com/vi/PV0HpkiGv24/hqdefault.jpg" alt="ConSSS Wars 無重之憶 — Demo 影片" width="420">
+<a href="https://youtube.com/shorts/cu5f6VMaQiU">
+  <img src="https://img.youtube.com/vi/cu5f6VMaQiU/hqdefault.jpg" alt="ConSSS Wars 無重之憶 — Demo 影片" width="420">
 </a>
 
-**[▶ 看 Demo 影片](https://youtube.com/shorts/PV0HpkiGv24)**
+**[▶ 看 Demo 影片](https://youtube.com/shorts/cu5f6VMaQiU)**
 
 </div>
 
