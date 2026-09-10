@@ -25,7 +25,10 @@ const ETHERS_URL = '/vendor/ethers.min.js';
  * 對一個 https 頁面來說那是 mixed content，瀏覽器連送都不送就擋掉，
  * SDK 只會拿到一句沒有內容的 "Network Error"。代理會把節點網址一併改寫成
  * 走同一支 Function，整條上傳鏈路就都是同源的 https 了。
- * 見 functions/api/og/zg/[[path]].js。
+ *
+ * 代理那端還有第二關：Cloudflare 不讓 Worker 對裸 IP 發出站請求（error 1003），
+ * 所以轉發前會把 IP 換成解析回同一個 IP 的 DNS 名稱。
+ * 兩件事都在 functions/api/og/zg/[[path]].js。
  */
 const DEFAULT_INDEXER = '/api/og/zg/indexer';
 
@@ -147,6 +150,10 @@ export async function explainError(err, { indexer, serverSaysLive } = {}) {
   }
   if ((err && err.code === -32002) || /already processing|already pending/i.test(msg)) {
     return '錢包已經有一個待處理的請求。請打開 MetaMask 按下確認，不要重複點這顆按鈕。';
+  }
+
+  if (/status code 403|status code 502|\b1003\b/.test(msg)) {
+    return `0G storage node 的轉發被拒（403/502）。節點是裸 IP，Cloudflare 不讓 Worker 直接打裸 IP（error 1003），我們改用會解析回同一個 IP 的 DNS 名稱繞過 —— 這個錯誤代表繞法在這個節點上沒生效。原始錯誤：${msg.slice(0, 120)}`;
   }
 
   if (/mixed content|insecure .*(request|endpoint)|must be served over https/i.test(msg)) {

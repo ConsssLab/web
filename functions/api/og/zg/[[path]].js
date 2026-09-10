@@ -128,6 +128,24 @@ function publicTarget(raw) {
 }
 
 /**
+ * Cloudflare 不讓 Worker 對裸 IP 發出站請求 —— 會直接回 error code 1003
+ * （Direct IP Access Not Allowed），連線根本沒發出去。而 0G 的 storage node
+ * 清一色是裸 IP（實測 http://34.19.125.196:5678）。
+ *
+ * sslip.io 是一個公開的 DNS 服務：a.b.c.d.sslip.io 永遠解析回 a.b.c.d。
+ * 換上它之後 Cloudflare 有 hostname 可以打，連到的還是同一台機器同一個埠。
+ *
+ * 只對裸 IPv4 動手。indexer 之後若改成回傳網域名稱，這裡就自動不生效。
+ */
+const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+const IP_DNS_SUFFIX = '.sslip.io';
+
+function dnsResolvable(url) {
+  if (IPV4.test(url.hostname)) url.hostname = url.hostname + IP_DNS_SUFFIX;
+  return url;
+}
+
+/**
  * 把 JSON 裡所有指向 storage node 的 url 欄位改寫成走這支代理。
  *
  * indexer 回傳的節點清單形狀在不同版本之間變過（有時是陣列，有時是
@@ -237,7 +255,7 @@ export async function onRequest({ request, params, env }) {
       base.origin,
     );
     target.search = new URL(request.url).search;
-    return forward(target, request);
+    return forward(dnsResolvable(target), request);
   }
 
   return json({ error: 'unknown proxy route' }, 404);
