@@ -48,6 +48,7 @@ const game = {
   busy: false,
   agentInfo: { providerLabel: '尚未呼叫', provider: null, model: null },
   agentTurns: [],
+  agentPending: null,
   ogStatus: null,
   wallet: null,
   shard: null,
@@ -203,9 +204,10 @@ function startBattle() {
   game.agentTurns = [];
   game.shard = null;
   el.taunt.classList.add('is-empty');
-  setAgentChip('AI agent 待命');
+  game.agentPending = null;
   show('battle');
   render();
+  beginAgentThinking();
 }
 
 function setAgentChip(text, thinking = false) {
@@ -367,6 +369,33 @@ function playSelected(lane) {
   render();
 }
 
+/**
+ * 同時出牌：回合一開始就用「玩家還沒部署」的盤面去問 agent。
+ *
+ * 原本是等玩家按下結束回合、才把當前盤面送過去 —— 那等於它拿到你的答案卷才作答。
+ * 在「逐條迴廊比火力」的規則下後手幾乎必勝：只要在你投重兵的那條放掉，
+ * 另外兩條各補一點就淨賺。模擬顯示對上會下棋的對手，玩家勝率是 0%。
+ *
+ * 改成回合開始就送出，還有一個附帶好處：它的思考時間跟你的重疊，回合更順。
+ * 它從舊盤面挑的手可能已經不合法（例如你用溯憶術清掉了它的出兵格附近），
+ * applyAgentPlays 每一手都會 validate，不合法的自動略過 —— 這正是戰爭迷霧該有的樣子。
+ */
+function beginAgentThinking() {
+  const snapshot = R.cloneState(game.state);
+  const summary = `第 ${snapshot.turn} 回合，我方核心 ${snapshot.core.forgetter}，敵方核心 ${snapshot.core.hero}`;
+  setAgentChip('AI agent 讀盤中…', true);
+  // 刻意不 await：讓它在玩家思考的同時決策
+  game.agentPending = askAgent(snapshot, summary).catch((err) => ({
+    plays: [],
+    taunt: '',
+    reason: '',
+    providerLabel: '本地備援',
+    provider: null,
+    model: null,
+    error: String((err && err.message) || err),
+  }));
+}
+
 async function endTurn() {
   if (game.busy || game.state.over) return;
   game.busy = true;
@@ -374,10 +403,10 @@ async function endTurn() {
   render();
 
   // ── 遺忘者（AI agent）回合 ──
-  setAgentChip('AI agent 讀盤中…', true);
+  // 它在你部署之前就開始想了，這裡只是等它回來
   sfx.agent();
-  const summary = `第 ${game.state.turn} 回合，我方核心 ${game.state.core.forgetter}，敵方核心 ${game.state.core.hero}`;
-  const decision = await askAgent(game.state, summary);
+  const decision = await (game.agentPending || Promise.resolve({ plays: [], taunt: '', reason: '', providerLabel: '本地備援' }));
+  game.agentPending = null;
   game.agentInfo = decision;
 
   const { applied } = applyAgentPlays(game.state, decision.plays, R.applyPlay);
@@ -417,6 +446,7 @@ async function endTurn() {
   el.trayHint.textContent = '選一張牌，再點一條迴廊部署。';
   game.busy = false;
   render();
+  beginAgentThinking(); // 新回合：它跟你同時開始想
 }
 
 /** 動畫刻意壓在 1 秒內：一分鐘的遊戲不能把時間花在等特效。 */

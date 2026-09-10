@@ -29,7 +29,11 @@ export const HERO_CARDS = {
     name: '憶哨兵',
     en: 'Memory Sentinel',
     cost: 1,
-    atk: 2,
+    // 3 攻是刻意跟遺忘者的雜訊看齊的。壓制傷害只看攻擊力總和，所以真正的貨幣是
+    // 「每點算力換到多少攻擊力」—— 哨兵原本 2 攻、雜訊 3 攻，等於玩家每條迴廊
+    // 都用比較差的匯率在買，模擬下來對上會下棋的對手是 0% 勝率。拉平之後
+    // 玩家的優勢改成體現在血量（3 vs 2）與零重刃的 4 攻爆發上。
+    atk: 3,
     hp: 3,
     kind: 'unit',
     glyph: '哨',
@@ -228,13 +232,25 @@ function sweepDead(state, events) {
  * 5) 壓制：交戰「之前」先比較每條迴廊雙方的總攻擊力，高的一方打對方核心。
  *    「誰站得住」改成「誰的火力大」，是為了打破鏡像僵局 —— 只看有沒有人的話，
  *    雙方每回合各補一個擋路兵就能鎖死全部三條迴廊，整局零傷害收在和局。
- *    比火力就一定會分出高下，玩家也有明確的施力點：這條要壓過去就得投更重的牌。
  *    先結算是因為交戰常常同歸於盡，等打完再看迴廊早就空了，投入多少都白費。
+ *
+ *    傷害隨火力差遞增，不是贏者全拿。原本只要多 1 點攻擊力就直接拿滿 2 點，
+ *    整個平衡因此變成「誰的算力換攻擊力效率高，誰就贏走一切」的離散跳躍：
+ *    模擬顯示調 1 點攻擊力，結果會在「必輸 / 必和 / 必贏」之間直接跳過去，
+ *    中間沒有可以調的地帶。改成 min(2, ceil(差 / 2)) 之後上限仍是 2 點
+ *    （沒有任何一條迴廊變得比以前更危險），但小優勢只換到小傷害，
+ *    要拿滿得壓過 3 攻以上 —— 「這條要壓過去就得投更重的牌」才真的有梯度回報。
  *
  * 推進刻意「同時」結算：先算出所有單位的意圖再一起套用，
  * 否則先掃描到的一方會白撿一格，形成不公平的先手優勢。
  */
+/** 壓制傷害的上限。實際傷害是 min(CONTROL_DAMAGE, ceil(火力差 / CONTROL_STEP))。 */
 export const CONTROL_DAMAGE = 2;
+export const CONTROL_STEP = 2;
+
+/** 火力差 → 壓制傷害。差 1~2 給 1 點，差 3 以上給滿 2 點，打平不給。 */
+export const controlDamage = (diff) =>
+  diff <= 0 ? 0 : Math.min(CONTROL_DAMAGE, Math.ceil(diff / CONTROL_STEP));
 
 export function resolveCombat(state) {
   const events = [];
@@ -252,8 +268,9 @@ export function resolveCombat(state) {
     if (heroAtk === foeAtk) continue; // 火力打平就沒有人拿到控制權
     const winner = heroAtk > foeAtk ? 'hero' : 'forgetter';
     const loser = winner === 'hero' ? 'forgetter' : 'hero';
-    state.core[loser] -= CONTROL_DAMAGE;
-    events.push({ kind: 'control', side: winner, lane: l, amount: CONTROL_DAMAGE });
+    const amount = controlDamage(Math.abs(heroAtk - foeAtk));
+    state.core[loser] -= amount;
+    events.push({ kind: 'control', side: winner, lane: l, amount });
   }
 
   // 2) 貼身交戰
