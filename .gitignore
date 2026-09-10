@@ -10,3 +10,7 @@ node_modules/
 
 # wrangler 本機開發產生的建置暫存，不該進版控
 .wrangler/
+
+# vercel CLI 在 proxy/ 底下產生的專案連結檔（含 project id / org id），不該進版控。
+# 放在根目錄用 .vercel/ 就能蓋到任何層級，proxy/ 裡不必再放一份 .gitignore。
+.vercel/
