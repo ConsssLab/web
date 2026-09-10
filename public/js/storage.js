@@ -21,9 +21,11 @@ const ETHERS_URL = '/vendor/ethers.min.js';
  * indexer 走自家的同源代理，不直接打 0g.ai。
  *
  * 直接打的話 indexer 本身通得過，但它回傳的 storage node 是另一批主機，
- * 那些主機沒為瀏覽器開 CORS，SDK 傳 segment 時只會拿到一句沒有內容的
- * "Network Error"。代理會把節點網址一併改寫成走同一支 Function，
- * 整條上傳鏈路就都是同源的了。見 functions/api/og/zg/[[path]].js。
+ * 而且長這樣：http://34.19.125.196:5678 —— 裸 IP、明文 http。
+ * 對一個 https 頁面來說那是 mixed content，瀏覽器連送都不送就擋掉，
+ * SDK 只會拿到一句沒有內容的 "Network Error"。代理會把節點網址一併改寫成
+ * 走同一支 Function，整條上傳鏈路就都是同源的 https 了。
+ * 見 functions/api/og/zg/[[path]].js。
  */
 const DEFAULT_INDEXER = '/api/og/zg/indexer';
 
@@ -114,9 +116,9 @@ export async function upload(shard, { indexer, rpc, onStep } = {}) {
  * 那就是對方沒開 CORS，而不是玩家網路有問題 —— 這兩件事的處理方式差很多，
  * 不講清楚玩家只會一直重試。
  */
-export async function probeIndexerFromBrowser(indexer) {
+export async function probeIndexerFromBrowser(indexer = DEFAULT_INDEXER) {
   try {
-    const res = await fetch(indexer, {
+    const res = await fetch(new URL(indexer, location.origin).toString(), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'indexer_getShardedNodes', params: [] }),
@@ -147,18 +149,22 @@ export async function explainError(err, { indexer, serverSaysLive } = {}) {
     return '錢包已經有一個待處理的請求。請打開 MetaMask 按下確認，不要重複點這顆按鈕。';
   }
 
+  if (/mixed content|insecure .*(request|endpoint)|must be served over https/i.test(msg)) {
+    return `瀏覽器擋掉了對 storage node 的明文連線（mixed content）。這一版應該全程走同源代理才對 —— 請強制重新整理（Shift+Reload）確認拿到的是最新的 js。原始錯誤：${msg.slice(0, 120)}`;
+  }
+
   if (/failed to fetch|network|fetch|timeout|ECONN|load failed/i.test(msg)) {
-    if (indexer) {
-      const probe = await probeIndexerFromBrowser(indexer);
-      if (!probe.reachable && serverSaysLive) {
-        return `0G Storage 的 indexer 不允許瀏覽器直接連線（CORS）—— 伺服器端連得到，這個瀏覽器連不到。這是節點端的限制，不是你的網路問題。原始錯誤：${msg.slice(0, 100)}`;
-      }
-      if (!probe.reachable) {
-        return `連不上 0G Storage 節點（伺服器端也連不到，可能是節點在維護）。原始錯誤：${msg.slice(0, 100)}`;
-      }
-      return `indexer 連得到，但上傳過程中斷 —— 可能是卡在後面的 storage node 或 Flow 合約那步。原始錯誤：${msg.slice(0, 140)}`;
+    // 現在 indexer 與 storage node 都走同源代理，所以先確認代理自己活著。
+    // 代理通、上傳還是斷，那就是斷在代理後面（節點或 Flow 合約），
+    // 不是瀏覽器的 CORS / mixed content 問題。
+    const probe = await probeIndexerFromBrowser();
+    if (!probe.reachable) {
+      return `連不上自家的 0G 代理（/api/og/zg/indexer）—— 這通常表示 Pages Functions 沒部署上去。原始錯誤：${msg.slice(0, 100)}`;
     }
-    return `連線失敗：${msg.slice(0, 160)}`;
+    if (indexer && !serverSaysLive) {
+      return `代理正常，但伺服器端也連不到 0G 的 indexer，可能是節點在維護。原始錯誤：${msg.slice(0, 100)}`;
+    }
+    return `代理與 indexer 都正常，上傳斷在後面那一步（storage node 傳 segment 或 Flow 合約 submit）。原始錯誤：${msg.slice(0, 140)}`;
   }
 
   return msg.slice(0, 220);
