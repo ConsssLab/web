@@ -12,6 +12,8 @@
  * 前端 rules.js 還會再 validate 一次。台詞用 textContent 塞進 DOM，不走 innerHTML。
  */
 
+import { sealTurn } from './og/tee.js';
+
 const OPENAI_BASE = 'https://api.openai.com/v1';
 const OG_ROUTER_BASE = 'https://router-api.0g.ai/v1';
 
@@ -28,8 +30,16 @@ const json = (data, status = 200) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
+/**
+ * 預設 **0G Compute**，設 AI_PROVIDER=openai 才切回 OpenAI。
+ *
+ * 一開始是反過來的（預設 OpenAI，理由是每回合都要叫、要低延遲）。但那讓「TEE」
+ * 變成空話：跟玩家對打的 agent 根本不在 enclave 裡，就無從證明「整場都是同一位」。
+ * 要讓那個主張成立，敵方 agent 必須跑在 0G Compute 上並帶回可驗證的簽名。
+ * 沒設金鑰時仍會退回本地啟發式，並照實標示「未接上模型」。
+ */
 function providerConfig(env) {
-  const choice = String(env.AI_PROVIDER || 'openai').toLowerCase();
+  const choice = String(env.AI_PROVIDER || '0g').toLowerCase();
   if (choice === '0g' || choice === '0g-compute') {
     return {
       id: '0g-compute',
@@ -236,12 +246,31 @@ export async function onRequestPost({ request, env }) {
       return fallback(`${cfg.label} ${res.status}: ${detail.slice(0, 160)}`);
     }
 
-    const data = await res.json();
+    // 原始文字要留著：證據鏈裡的 responseHash 算的是「供應商實際回了什麼」，
+    // 不是我們解析後的結果 —— 解析後才算就等於在證明我們自己的程式，沒有意義。
+    const rawText = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      return fallback(`${cfg.label} 回傳不是 JSON`);
+    }
     const message = data && data.choices && data.choices[0] && data.choices[0].message;
     const parsed = extractJson(message && message.content);
     if (!parsed) return fallback(`${cfg.label} 回傳無法解析`);
 
     const plays = sanitizePlays(parsed.plays, legal, view.yourCompute);
+    const evidence = await sealTurn({
+      turn: Number.isFinite(Number(view.turn)) ? Math.max(1, Math.min(99, Math.trunc(Number(view.turn)))) : 1,
+      view,
+      legal,
+      rawResponse: rawText,
+      headers: res.headers,
+      body: data,
+      model: cfg.model,
+      provider: cfg.id,
+    });
+
     return json({
       plays: plays.length ? plays : heuristic(view, legal),
       usedFallbackPlays: plays.length === 0,
@@ -250,6 +279,7 @@ export async function onRequestPost({ request, env }) {
       provider: cfg.id,
       providerLabel: cfg.label,
       model: cfg.model,
+      evidence,
     });
   } catch (err) {
     return fallback(

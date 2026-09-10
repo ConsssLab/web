@@ -85,6 +85,9 @@ curl "https://conssswars-web.pages.dev/api/og/storage?root=0x<你的root>" | jq
 
 # 賽道三：拿任何一筆錨定交易的 hash 回來重驗
 curl "https://conssswars-web.pages.dev/api/og/verify?tx=0x<你的交易hash>" | jq
+
+# 賽道一：provider 的 attestation（enclave measurement 與公鑰）
+curl https://conssswars-web.pages.dev/api/og/attest | jq
 ```
 
 ---
@@ -268,11 +271,12 @@ API 金鑰請選 **Secret**（加密），不要用一般變數。
 
 | 變數 | 賽道 | 必要性 | 說明 |
 | --- | --- | --- | --- |
-| `OPENAI_API_KEY` | 敵方 agent | 建議設 | OpenAI 金鑰。**只存在 Function 端**，不會進前端 bundle。 |
-| `OPENAI_MODEL` | 敵方 agent | 選用 | 預設 `gpt-4o-mini` |
-| `AI_PROVIDER` | 敵方 agent | 選用 | `openai`（預設）或 `0g`（敵方 agent 也切到 0G Compute） |
-| `OG_COMPUTE_API_KEY` | 賽道一 | 建議設 | 0G Compute Router 金鑰，從 [pc.0g.ai](https://pc.0g.ai) 取得 |
+| `OG_COMPUTE_API_KEY` | 賽道一 | **建議設** | 0G Compute Router 金鑰，從 [pc.0g.ai](https://pc.0g.ai) 取得。敵方 agent 與旁白 agent 都吃這把 |
 | `OG_COMPUTE_MODEL` | 賽道一 | 選用 | 預設 `deepseek-chat-v3-0324` |
+| `OG_COMPUTE_ATTESTATION_URL` | 賽道一 | 想驗到 enclave 等級才需要 | provider 的 attestation 端點。沒設的話「同一位 agent」最多只能驗到 `signed`（同一把金鑰），畫面會照實降級顯示 |
+| `AI_PROVIDER` | 敵方 agent | 選用 | `0g`（**預設**）或 `openai`。切回 OpenAI 會讓「同一位 agent」的驗證降級 |
+| `OPENAI_API_KEY` | 敵方 agent | 只有切回 OpenAI 才要 | **只存在 Function 端**，不會進前端 bundle |
+| `OPENAI_MODEL` | 敵方 agent | 選用 | 預設 `gpt-4o-mini` |
 | `OG_STORAGE_INDEXER` | 賽道二 | 選用 | 預設 Turbo indexer；唯讀查詢不需金鑰 |
 | `OG_ZG_PROXY_BASE` | 賽道二 | **上傳必要** | 節點代理的網址（結尾要有 `/api`）。沒設的話前端會走同源的 `/api/og/zg`，那條路在 Cloudflare 上必定失敗 —— 見上面「賽道二還需要一台 Node 代理」 |
 | `OG_PROXY_SECRET` | 賽道二 | 選用 | 代理用來簽節點網址的金鑰。擋的是「有人拿這個網域當跳板」，不是機密資料；沒設會用內建常數。要更嚴的話**主站與 proxy 兩邊要設成同一個值** |

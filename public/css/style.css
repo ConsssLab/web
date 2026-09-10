@@ -1229,3 +1229,100 @@ body {
   white-space: nowrap;
   border: 0;
 }
+
+/*
+ * TEE 驗證面板。
+ *
+ * 燈號刻意分四級而不是「通過／不通過」：能證明到哪一層取決於供應商回傳了什麼。
+ * 把「只是紀錄一致」畫成綠燈，比沒有這個功能更糟 —— 所以顏色由 data-level 決定，
+ * 只有 attested（有簽名、同一把公鑰、對得上 measurement）才拿得到藍燈。
+ */
+.tee {
+  margin-top: 12px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  padding: 10px 12px 12px;
+}
+
+.tee-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tee-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.tee-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border: 1.5px solid var(--ink);
+  white-space: nowrap;
+}
+
+.tee-badge[data-level='attested'] { background: var(--blue); color: #fff; border-color: var(--blue); }
+.tee-badge[data-level='signed'] { background: #F2C36B; color: var(--ink); }
+.tee-badge[data-level='consistent'] { background: var(--paper-edge); color: var(--muted); }
+.tee-badge[data-level='changed'] { background: var(--terracotta); color: #fff; border-color: var(--terracotta); }
+.tee-badge[data-level='none'] { background: var(--terracotta); color: #fff; border-color: var(--terracotta); }
+
+.tee-reason {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* 每回合一格。玩家要一眼看出「七回合都是同一盞燈」。 */
+.tee-turns {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tee-turn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1.5px solid var(--ink);
+  padding: 3px 7px;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.tee-turn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--paper-edge);
+  border: 1.5px solid var(--ink);
+  flex: none;
+}
+
+.tee-turn[data-state='ok'] .tee-turn-dot { background: var(--blue); border-color: var(--blue); }
+.tee-turn[data-state='changed'] .tee-turn-dot { background: var(--terracotta); border-color: var(--terracotta); }
+.tee-turn[data-state='unsigned'] .tee-turn-dot { background: transparent; }
+
+.tee-meta {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--muted);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+}
+
+.tee-meta dt { color: var(--ink); }
+.tee-meta dd { margin: 0; overflow-wrap: anywhere; }

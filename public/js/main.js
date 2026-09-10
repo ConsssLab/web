@@ -49,6 +49,8 @@ const game = {
   agentInfo: { providerLabel: '尚未呼叫', provider: null, model: null },
   agentTurns: [],
   agentPending: null,
+  teeChain: [],
+  teeVerdict: null,
   ogStatus: null,
   wallet: null,
   shard: null,
@@ -202,6 +204,8 @@ function startBattle() {
   game.selected = null;
   game.busy = false;
   game.agentTurns = [];
+  game.teeChain = [];
+  game.teeVerdict = null;
   game.shard = null;
   el.taunt.classList.add('is-empty');
   game.agentPending = null;
@@ -411,6 +415,8 @@ async function endTurn() {
 
   const { applied } = applyAgentPlays(game.state, decision.plays, R.applyPlay);
   game.agentTurns.push({ turn: game.state.turn, plays: applied, taunt: decision.taunt });
+  // TEE 證據鏈：有拿到才收，沒拿到就不收 —— 鏈的長度短於回合數本身就是一種訊號
+  if (decision.evidence) game.teeChain.push(decision.evidence);
 
   const modelTag = decision.model ? ` · ${decision.model}` : '';
   setAgentChip(
@@ -621,6 +627,7 @@ async function buildShard(result) {
       narrator: narrator ? narrator.provider : '',
       narration: narrator ? narrator.narration : '',
       agentTurns: game.agentTurns,
+      teeChain: game.teeChain,
     });
     game.shard = data;
     $('shard-digest').textContent = data.digest;
@@ -873,6 +880,104 @@ async function pollStorage(root, note, attempts = 6) {
 }
 
 /**
+ * 賽道一的收尾：驗證整場對戰是不是同一位 AI agent。
+ *
+ * 這跟「鏈上回驗」驗的不是同一件事 —— 那個驗資料有沒有真的上鏈，這個驗
+ * 「跟你對打的對手中途有沒有被換掉」。做法是把每回合的證據（它看到的盤面雜湊、
+ * 它回應的雜湊、enclave 簽名、簽章公鑰）串起來，看是不是同一把公鑰、
+ * 而且那把公鑰對得上 attestation 裡的 enclave measurement。
+ *
+ * 結果分四級，刻意不做成通過／不通過：能證明到哪一層完全取決於供應商回了什麼。
+ * 把「只是紀錄一致」畫成綠燈，比沒有這個功能更糟。
+ */
+const TEE_BADGE = {
+  attested: '已驗證 · enclave 等級',
+  signed: '部分驗證 · 缺 attestation',
+  changed: '⚠ 公鑰中途換過',
+  consistent: '未驗證 · 僅紀錄一致',
+  none: '無法驗證',
+};
+
+async function verifyTee() {
+  const btn = $('btn-tee');
+  const panel = $('tee');
+  const reason = $('tee-reason');
+  btn.disabled = true;
+  btn.textContent = '驗證中…';
+
+  try {
+    // attestation 拿不到不算失敗 —— 它只是決定最高能驗到哪一級
+    const attestation = await fetch('/api/og/attest', { headers: { accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+
+    const res = await fetch('/api/og/same-agent', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chain: game.teeChain, attestation }),
+    });
+    if (!res.ok) throw new Error(`same-agent ${res.status}`);
+    const v = await res.json();
+    game.teeVerdict = v;
+
+    const badge = $('tee-badge');
+    badge.textContent = TEE_BADGE[v.level] || v.level;
+    badge.dataset.level = v.level;
+    reason.textContent = v.reason;
+
+    // 逐回合亮燈：同一把公鑰＝藍、換過＝橘、沒簽名＝空心
+    const list = $('tee-turns');
+    list.textContent = '';
+    for (const t of v.perTurn || []) {
+      const li = document.createElement('li');
+      li.className = 'tee-turn';
+      li.dataset.state = !t.signed ? 'unsigned' : t.sameAsFirst === false ? 'changed' : 'ok';
+      const dot = document.createElement('span');
+      dot.className = 'tee-turn-dot';
+      const label = document.createElement('span');
+      label.textContent = `第 ${t.turn} 回合`;
+      li.append(dot, label);
+      list.appendChild(li);
+    }
+    if (!(v.perTurn || []).length) {
+      const li = document.createElement('li');
+      li.className = 'tee-turn';
+      li.dataset.state = 'unsigned';
+      li.textContent = '這一場沒有任何回合留下證據';
+      list.appendChild(li);
+    }
+
+    const meta = $('tee-meta');
+    meta.textContent = '';
+    const rows = [
+      ['回合數', `${v.signedTurns} / ${v.turns} 有簽名`],
+      ['模型', (v.models || []).join(' / ') || '—'],
+      ['供應商', (v.providers || []).join(' / ') || '—'],
+      ['簽章公鑰', v.signer || '未取得'],
+      ['enclave measurement', v.measurement || '未取得'],
+    ];
+    for (const [k, val] of rows) {
+      const dt = document.createElement('dt');
+      dt.textContent = k;
+      const dd = document.createElement('dd');
+      dd.textContent = val;
+      meta.append(dt, dd);
+    }
+
+    panel.hidden = false;
+    btn.textContent = '重新驗證';
+  } catch (err) {
+    panel.hidden = false;
+    $('tee-badge').textContent = '驗證失敗';
+    $('tee-badge').dataset.level = 'none';
+    reason.textContent = `驗證請求本身失敗：${String((err && err.message) || err).slice(0, 120)}`;
+    btn.textContent = 'TEE 驗證 · 是同一位 agent 嗎';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/**
  * 賽道三的收尾：把剛送出去的交易從 0G Chain 讀回來，重新解析 calldata 並比對摘要。
  * 「錢包沒報錯」不算證明，讀得回來、摘要對得上才算。
  */
@@ -891,6 +996,8 @@ async function verifyAnchor({ quiet = false } = {}) {
       btn.textContent = '鏈上回驗';
       btn.disabled = false;
       $('proof').hidden = true;
+    $('tee').hidden = true;
+    $('btn-tee').textContent = 'TEE 驗證 · 是同一位 agent 嗎';
       if (!quiet) note.textContent = '交易還沒進區塊，等幾秒再按一次回驗。';
       return false;
     }
@@ -921,6 +1028,10 @@ function initResult() {
   $('btn-storage').addEventListener('click', () => {
     sfx.tap();
     uploadToStorage();
+  });
+  $('btn-tee').addEventListener('click', () => {
+    sfx.tap();
+    verifyTee();
   });
   $('btn-again').addEventListener('click', () => {
     sfx.tap();

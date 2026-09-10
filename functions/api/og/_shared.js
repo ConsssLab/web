@@ -65,9 +65,16 @@ export async function rpc(url, method, params = [], timeoutMs = 6000) {
 export const rpcUrlOf = (env) => env.OG_RPC_URL || GALILEO.rpcUrl;
 export const indexerOf = (env) => env.OG_STORAGE_INDEXER || STORAGE_INDEXER;
 
-/** 敵方 agent 的供應商。預設 OpenAI；AI_PROVIDER=0g 就整支切到 0G Compute。 */
+/**
+ * 敵方 agent 的供應商。**預設 0G Compute**，設 AI_PROVIDER=openai 才會切回 OpenAI。
+ *
+ * 一開始是反過來的（預設 OpenAI，理由是低延遲）。但那讓「TEE」這件事變成空話：
+ * 跟玩家對打的 agent 根本不在 enclave 裡，也就無從證明「整場都是同一位」。
+ * 要讓那個主張成立，敵方 agent 必須跑在 0G Compute 上並帶回可驗證的簽名，
+ * 所以預設改過來。沒設金鑰時仍會退回本地啟發式，並照實標示。
+ */
 export function providerConfig(env) {
-  const choice = String(env.AI_PROVIDER || 'openai').toLowerCase();
+  const choice = String(env.AI_PROVIDER || '0g').toLowerCase();
   if (choice === '0g' || choice === '0g-compute') return ogComputeConfig(env);
   return {
     id: 'openai',
