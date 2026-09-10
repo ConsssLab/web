@@ -105,8 +105,9 @@ export async function upload(shard, { proxyBase, rpc, onStep } = {}) {
   const signer = await provider.getSigner();
 
   step('送出 Flow 合約 submit 並上傳 segment…');
-  // 這裡刻意忽略呼叫端傳進來的真實 indexer 網址，一律走代理 ——
-  // 直連的話 segment 那步會被 storage node 的 CORS 擋掉。
+  // indexer 一律走代理（proxyBase 由 /api/og/status 下發）。
+  // 直連的話 segment 那步會死在節點端：明文 http 是 mixed content，
+  // 而且那些主機沒為瀏覽器開 CORS。
   const client = new zg.Indexer(indexerUrl(proxyBase));
   const [tx, err] = await client.upload(data, rpc || DEFAULT_RPC, signer);
   if (err) throw new Error(String(err && err.message ? err.message : err));
