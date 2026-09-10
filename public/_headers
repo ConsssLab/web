@@ -1,12 +1,26 @@
-# 靜態資源可以快取，但 index.html 要每次重新驗證，改版才會立刻生效。
+# 檔名沒有內容雜湊，所以 js / css 一律每次重新驗證。
+#
+# 原本這兩類是 max-age=600。那表示部署完之後的十分鐘內，已經開過網頁的人
+# 拿到的仍是舊檔 —— 而且瀏覽器連問都不會問伺服器。這在展示的時候害慘過我們：
+# 修好的東西上線了，畫面卻還是舊行為，於是往程式碼裡找一個根本不存在的 bug。
+#
+# must-revalidate + max-age=0 不等於不快取：檔案沒變時伺服器回 304，
+# 內容不會重傳，只多一次很小的往返。這幾支檔案都只有二三十 KB，
+# 拿這點成本換「部署完就是最新的」很划算。
+#
+# vendor/ 底下是釘死版本的第三方 bundle（合計約 1MB），內容不會變，
+# 維持長快取。
 /js/*
-  Cache-Control: public, max-age=600
+  Cache-Control: public, max-age=0, must-revalidate
 
 /css/*
-  Cache-Control: public, max-age=600
+  Cache-Control: public, max-age=0, must-revalidate
 
 /index.html
   Cache-Control: public, max-age=0, must-revalidate
+
+/vendor/*
+  Cache-Control: public, max-age=604800, immutable
 
 /*
   X-Content-Type-Options: nosniff
