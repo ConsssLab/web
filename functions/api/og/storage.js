@@ -73,6 +73,29 @@ async function indexerNodes(indexer) {
   throw new Error(errors.join(' | ').slice(0, 160));
 }
 
+/**
+ * storagescan 的檔案頁是用「提交序號」定位的，不是 root hash：
+ *
+ *   https://storagescan-galileo.0g.ai/submission/<txSeq>
+ *
+ * 這個站沒有 /file/<root> 這種路徑（我們原本這樣組，點下去是 404）。
+ * 序號來自 indexer 回的檔案資訊 —— 0g-storage-node 把它放在 tx.seq，
+ * 不同版本也出現過 txSeq / seq 這幾種寫法，所以都認一下。
+ * 拿不到就回 null，讓前端照實把按鈕留成不可按，而不是給一個會 404 的連結。
+ */
+function seqOf(body) {
+  const cands = [body && body.tx && body.tx.seq, body && body.tx && body.tx.txSeq, body && body.txSeq, body && body.seq];
+  for (const v of cands) {
+    // 先擋掉 null / undefined / 空字串 —— Number(null) 是 0，會讓「查不到」
+    // 變成一個看起來合法的 /submission/0 連結。
+    if (typeof v !== 'number' && typeof v !== 'string') continue;
+    if (v === '') continue;
+    const n = Number(v);
+    if (Number.isInteger(n) && n >= 0) return n;
+  }
+  return null;
+}
+
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const root = String(url.searchParams.get('root') || '').trim();
@@ -96,14 +119,16 @@ export async function onRequestGet({ request, env }) {
   try {
     const info = await getJson(`${indexer.replace(/\/+$/, '')}/file/info/${root}`);
     const found = Boolean(info.ok && info.body && info.body.finalized !== undefined);
+    const txSeq = found ? seqOf(info.body) : null;
     return json({
       indexer,
       root,
       found,
       finalized: found ? Boolean(info.body.finalized) : null,
       pruned: found ? Boolean(info.body.pruned) : null,
+      txSeq,
       info: info.body,
-      scanUrl: `${GALILEO.storageScan}/file/${root}`,
+      scanUrl: txSeq === null ? null : `${GALILEO.storageScan}/submission/${txSeq}`,
     });
   } catch (err) {
     return json(
