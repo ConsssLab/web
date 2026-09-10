@@ -102,8 +102,10 @@ curl "https://conssswars-web.pages.dev/api/og/verify?tx=0x<你的交易hash>" | 
 > 所以結果畫面有一顆「鏈上回驗」按鈕，會實際去讀那筆交易的 calldata，
 > 重新解析、跟本地碎片的 SHA-256 比對，比對相符才敢標成 ✓。
 
-美術與音樂全部是程式現畫、現合成的 —— 沒有任何圖檔、沒有任何音檔。
-`art.js` 是 inline SVG，`audio.js` 是程序化 WebAudio。
+音樂與音效**沒有任何音檔** —— `audio.js` 是程序化 WebAudio，全部現合成。
+美術除了三位主角的形象照（`public/images/heroes.jpeg`）之外，也全是 `art.js` 現畫的
+inline SVG：戰場、卡牌、遺忘者的遮罩、結果畫面都沒有圖檔。把形象照抽掉照樣能玩，
+角色卡會自動退回 SVG 版本。
 
 ---
 
@@ -125,8 +127,9 @@ curl "https://conssswars-web.pages.dev/api/og/verify?tx=0x<你的交易hash>" | 
 npm run sim     # 跑 300 場隨機對戰，印出勝負分布與平均回合數
 ```
 
-> ⚠️ **改任何數值前請先重跑模擬。** 現行數值是調出來的：
-> 合理玩法約第 6 回合收掉，亂打約七成會輸（實測 300 場：71% 落敗，平均 3.7 回合）。
+> ⚠️ **改任何數值前請先重跑模擬。** 現行數值是調出來的：合理玩法約第 6 回合收掉，
+> 亂打大多會輸。模擬用的是隨機出牌，每次結果會抖動 —— 連跑五輪的實測範圍是
+> **落敗 59–69%、平均 3.7–3.8 回合**（其餘多為和局，隨機亂打贏面約兩成）。
 
 ---
 
@@ -138,8 +141,10 @@ npm run sim     # 跑 300 場隨機對戰，印出勝負分布與平均回合數
 | 蕙 Hue | 見證者 | The Witness |
 | 刃 Ren | 零重刃 | Blade of Gravity |
 
-形象照放 `public/images/heroes.{png,jpg,jpeg,webp}`（**一張**三格拼版，左到右 零→蕙→刃，
-單格比例約 454×787）就會自動採用 —— 程式不裁圖，整張載入後用 CSS 取三等分之一。
+形象照放 `public/images/heroes.{png,jpg,jpeg,webp}`（**一張**三格拼版，左到右 零→蕙→刃）
+就會自動採用 —— 程式不裁圖，整張載入後用 CSS 取三等分之一。
+現行那張是 **1361×768**，所以單格約 **454×768**；CSS 的 `aspect-ratio` 直接寫成
+`1361 / 2304`（= 整張寬 ÷ 單格高×3），換圖時記得一起改，比例不對臉會被縱向拉伸。
 沒放則退回 `art.js` 現畫的 inline SVG，兩種情況都能正常運作。細節見
 [`public/images/README.md`](public/images/README.md)。
 
