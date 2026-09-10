@@ -227,29 +227,49 @@ function selfBase(req) {
 export const config = { api: { bodyParser: false } };
 
 /**
- * 路徑一律自己從 req.url 解析，不靠框架給的 catch-all 參數。
+ * 路徑怎麼拿：三個來源依序試，不押寶在任何一個上。
  *
- * 實測 Vercel 上 req.query.path 拿不到東西（/api/health 直接落到 404 分支），
- * 而那個參數的形狀本來就綁在檔名慣例與執行環境上 —— req.url 是 HTTP 本身的
- * 東西，換平台也不會變。留 req.query.path 當備援，兩邊都空才算沒有路徑。
+ * 這裡踩過兩次坑。先是靠 Vercel 的 catch-all 參數 req.query.path，結果
+ * /api/health 直接落到 404 —— 那個參數在這個執行環境上是空的。改成自己解析
+ * req.url 之後 /api/indexer 通了，但 /api/node/<簽章>/<網址> 的預檢仍然沒進到
+ * 函式（瀏覽器只看得到「preflight 沒有 Access-Control-Allow-Origin」），
+ * 也就是深一層的路徑根本沒被路由過來。
+ *
+ * 所以現在改成 vercel.json 明寫一條 rewrite，把 /api/* 全部導到這支函式，
+ * 並把原始路徑放進 zgpath 查詢參數 —— rewrite 之後 req.url 會不會保留原路徑
+ * 是平台細節，不值得賭。zgpath 沒有就退回解析 req.url，再沒有才看
+ * req.query.path。三個來源任一個成立就能正確路由。
  */
-function pathSegments(req) {
-  const pathname = new URL(req.url || '/', 'http://placeholder').pathname;
-  const fromUrl = pathname
+const decodeSeg = (s) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+
+const splitPath = (p) =>
+  String(p || '')
     .replace(/^\/+/, '')
     .replace(/^api\/?/, '')
     .split('/')
     .filter(Boolean)
-    .map((s) => {
-      try {
-        return decodeURIComponent(s);
-      } catch {
-        return s;
-      }
-    });
-  if (fromUrl.length) return fromUrl;
+    .map(decodeSeg);
+
+function pathSegments(req) {
+  const url = new URL(req.url || '/', 'http://placeholder');
+
+  const zgpath = url.searchParams.get('zgpath');
+  if (zgpath) return splitPath(zgpath);
+
+  const fromUrl = splitPath(url.pathname);
+  if (fromUrl.length && fromUrl[0] !== 'index') return fromUrl;
+
   const raw = req.query?.path ?? [];
-  return (Array.isArray(raw) ? raw : [raw]).filter(Boolean);
+  const fromQuery = (Array.isArray(raw) ? raw : [raw]).filter(Boolean);
+  if (fromQuery.length) return fromQuery;
+
+  return fromUrl;
 }
 
 export default async function handler(req, res) {
@@ -289,8 +309,10 @@ export default async function handler(req, res) {
       [upstreamBase.pathname.replace(/\/+$/, ''), rest].filter(Boolean).join('/') || '/',
       upstreamBase.origin,
     );
-    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-    target.search = qs;
+    // 查詢字串照轉，但 zgpath 是我們自己的路由參數，不能漏到 storage node 去
+    const incoming = new URL(req.url || '/', 'http://placeholder');
+    incoming.searchParams.delete('zgpath');
+    target.search = incoming.search;
     return forward(target, req, res);
   }
 
