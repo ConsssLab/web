@@ -50,7 +50,7 @@ function providerConfig(env) {
   };
 }
 
-const SYSTEM = `你是回合制策略遊戲《鏈之英雄傳 ConSSS Wars》裡的反派 AI agent「遺忘者」。
+const SYSTEM = `你是回合制策略遊戲《鏈州英雄傳 ConSSS Wars》裡的反派 AI agent「遺忘者」。
 你在鏈國 0G 進攻對方的「記憶核心」。你要贏，也要有角色感。
 
 戰場規則：

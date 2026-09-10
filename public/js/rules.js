@@ -1,5 +1,5 @@
 /**
- * 鏈之英雄傳 ConSSS Wars — 無重之憶 · Weightless Memory
+ * 鏈州英雄傳 ConSSS Wars — 無重之憶 · Weightless Memory
  * 純規則層（deterministic，無 DOM、無網路），前端與 AI agent 提示共用同一份定義。
  *
  * 戰場：3 條「記憶迴廊」，每條 3 格。

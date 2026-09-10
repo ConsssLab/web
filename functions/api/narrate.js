@@ -19,7 +19,7 @@ const MAX_BODY = 8 * 1024;
 const TIMEOUT_MS = 9000;
 const MAX_NARRATION = 120;
 
-const SYSTEM = `你是《鏈之英雄傳 ConSSS Wars》裡的「記憶編纂者」。
+const SYSTEM = `你是《鏈州英雄傳 ConSSS Wars》裡的「記憶編纂者」。
 玩家剛在鏈國 0G 打完一場記憶迴廊的攻防，你要把這場戰鬥寫成一段要永久存進 0G Storage 的檔案敘述。
 
 規則：

@@ -2,7 +2,7 @@
 
 <img src="public/images/logo.svg" alt="ConSSS Wars" width="150">
 
-# 鏈之英雄傳 ConSSS Wars
+# 鏈州英雄傳 ConSSS Wars
 
 ### 第 0 章 · 無重之憶 — Weightless Memory
 
@@ -46,6 +46,16 @@
         ↓  （碎片的 SHA-256）
 摘要 ──合約建立交易──▶ 錨定到 0G Chain ──讀回來逐欄比對──▶ ✓
 ```
+
+**三條賽道都已在 Galileo 測試網跑通**，下面是其中一場的實際紀錄（可自行到瀏覽器重現）：
+
+| 賽道 | 狀態 | 實測證據 |
+|---|---|---|
+| **0G Compute** | ✅ 通 | `deepseek-chat-v3-0324 · TEE 就緒`，戰後旁白由 enclave 產生 |
+| **0G Storage** | ✅ 通 | 檔案 root `0x31dbf57395ca6d1b8f401f944453b846ce0c2a0cedddd97c27c4bc8a84d7cb25`<br>Flow 合約 submit tx `0x9c7377b88930c28412c95dfb452793c500233531264e09fef8537b91358b2218`<br>儲存費 92200934886 neuron，節點回報 `Single file upload completed` |
+| **0G Chain** | ✅ 通 | 區塊 `#54068232`、5 個確認，calldata 讀回後**四項全部相符**（摘要 / 勝負 / 回合數 / 記憶核心） |
+
+> 賽道二繞了很久才通。0G 的 storage node 是**裸 IP + 明文 http + 5678 埠**，瀏覽器擋 mixed content、Cloudflare Workers 又擋裸 IP（`error 1003`）與非標準埠（`error 521`），所以節點轉發那一小段必須跑在 Node 上（[`proxy/`](proxy/)）。細節寫在 [proxy/README.md](proxy/README.md)。
 
 | 用了哪些 0G 技術 | 為什麼要用它 | 在哪一行用到 |
 |---|---|---|
