@@ -74,6 +74,24 @@ async function indexerNodes(indexer) {
 }
 
 /**
+ * indexer 把答案包在一層信封裡：
+ *
+ *   {"code":0,"message":"Success","data":{"tx":{…,"seq":150104},"finalized":true,…}}
+ *
+ * 原本這裡直接讀 body.finalized，那永遠是 undefined，於是 found 一直是 false ——
+ * 「跟 indexer 對一次」這個確認靜靜地失敗了很久，只是被上傳成功的畫面蓋過去。
+ * 有 data 就剝掉，沒有就當作已經是內容本身（不同版本回過沒包信封的形狀）。
+ * code 不是 0 代表 indexer 自己說失敗，這時不要把 data 當成有效答案。
+ */
+function unwrap(body) {
+  if (!body || typeof body !== 'object') return null;
+  if (body.data && typeof body.data === 'object') {
+    return body.code === undefined || body.code === 0 ? body.data : null;
+  }
+  return body;
+}
+
+/**
  * storagescan 的檔案頁是用「提交序號」定位的，不是 root hash：
  *
  *   https://storagescan-galileo.0g.ai/submission/<txSeq>
@@ -118,16 +136,18 @@ export async function onRequestGet({ request, env }) {
 
   try {
     const info = await getJson(`${indexer.replace(/\/+$/, '')}/file/info/${root}`);
-    const found = Boolean(info.ok && info.body && info.body.finalized !== undefined);
-    const txSeq = found ? seqOf(info.body) : null;
+    const file = unwrap(info.body);
+    const found = Boolean(info.ok && file && file.finalized !== undefined);
+    const txSeq = found ? seqOf(file) : null;
     return json({
       indexer,
       root,
       found,
-      finalized: found ? Boolean(info.body.finalized) : null,
-      pruned: found ? Boolean(info.body.pruned) : null,
+      finalized: found ? Boolean(file.finalized) : null,
+      pruned: found ? Boolean(file.pruned) : null,
+      size: found && Number.isFinite(Number(file.tx && file.tx.size)) ? Number(file.tx.size) : null,
       txSeq,
-      info: info.body,
+      info: file,
       scanUrl: txSeq === null ? null : `${GALILEO.storageScan}/submission/${txSeq}`,
     });
   } catch (err) {
