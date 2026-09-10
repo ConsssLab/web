@@ -40,18 +40,23 @@
 一場戰鬥的資料被三條賽道**接力**處理，不是三個各自獨立的 demo：
 
 ```
-0G Compute 的 TEE agent 寫出戰報敘述
-        ↓  （這份敘述被封進記憶碎片）
+0G Compute 的 enclave 裡，同一個 agent 打完七回合
+        │   每回合封存 盤面雜湊 + 回應雜湊 + provider 位址 ──┐
+        ↓                                                  │
+戰後旁白（同樣在 enclave 裡）寫出戰報敘述                    │
+        ↓  （敘述與上面那條證據鏈一起被封進記憶碎片）◀───────┘
 記憶碎片 ──算 merkle root、玩家錢包付費──▶ 真的存進 0G Storage
-        ↓  （碎片的 SHA-256）
+        ↓  （碎片的 SHA-256，蓋住敘述與證據鏈）
 摘要 ──合約建立交易──▶ 錨定到 0G Chain ──讀回來逐欄比對──▶ ✓
 ```
+
+所以鏈上那個摘要不只證明「戰報沒被改」，也蓋住了「這七回合是同一位 agent 打的」那份證據。
 
 **三條賽道都已在 Galileo 測試網跑通**，下面是其中一場的實際紀錄（可自行到瀏覽器重現）：
 
 | 賽道 | 狀態 | 實測證據 |
 |---|---|---|
-| **0G Compute** | ✅ 通 | `0gm-1.0-35b-a3b`（**TeeML** · TDX · dstack）—— 敵方 agent 與戰後旁白都跑在 enclave 裡 |
+| **0G Compute** | ✅ 通 | `0gm-1.0-35b-a3b`　`verifiability: TeeML` · `tee_type: TDX` · `tee_verifier: dstack`<br>**敵方 agent 與戰後旁白都跑在 enclave 裡**，而且整場七回合由同一個 provider（`0x4870…`）服務 —— 結果畫面按「TEE 驗證」可以逐回合看 |
 | **0G Storage** | ✅ 通 | 檔案 root `0x31dbf57395ca6d1b8f401f944453b846ce0c2a0cedddd97c27c4bc8a84d7cb25`<br>Flow 合約 submit tx `0x9c7377b88930c28412c95dfb452793c500233531264e09fef8537b91358b2218`<br>儲存費 92200934886 neuron，節點回報 `Single file upload completed` |
 | **0G Chain** | ✅ 通 | 區塊 `#54068232`、5 個確認，calldata 讀回後**四項全部相符**（摘要 / 勝負 / 回合數 / 記憶核心） |
 
@@ -59,7 +64,7 @@
 
 | 用了哪些 0G 技術 | 為什麼要用它 | 在哪一行用到 |
 |---|---|---|
-| **0G Compute Network**<br>TEE 可驗證推論 | 戰報要永久存檔，寫它的那個 agent 就不能是黑箱。金鑰在 pc.0g.ai 選 **Private（TEE enclave）** 開的，推論實際跑在 enclave 裡，不是只呼叫一個 OpenAI 相容端點。 | [`functions/api/narrate.js#L55-L134`](https://github.com/ConsssLab/web/blob/main/functions/api/narrate.js#L55-L134) |
+| **0G Compute Network**<br>TEE 可驗證推論 | 戰報要永久存檔，寫它的那個 agent 就不能是黑箱。判準是模型的 **`verifiability`**，不是金鑰模式：`TeeML` 才代表**模型本身**跑在 enclave 裡，`TeeTLS` 只有傳輸層在裡面、推論仍在上游廠商那邊。我們用的 `0gm-1.0-35b-a3b` 是 TeeML。 | [`functions/api/narrate.js#L55-L134`](https://github.com/ConsssLab/web/blob/main/functions/api/narrate.js#L55-L134) |
 | **0G Compute Network**<br>Router 設定 | 敵方 agent 與旁白 agent 共用同一份供應商工廠，**兩者預設都指向 0G Compute**。要主張「整場都是同一位 agent」，對打的那個 agent 就必須在 enclave 裡 —— 所以預設不是 OpenAI。 | [`functions/api/og/_shared.js#L22-L23`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L22-L23) · [`functions/api/og/_shared.js#L68-L87`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L68-L87) · [`functions/api/og/_shared.js#L108-L116`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L108-L116) |
 | **0G Storage**<br>真實寫入 | 記憶碎片要「永久保存」就必須真的落地。用官方 SDK 走完整協議：切 256-byte chunk 算 merkle root → 對 Flow 合約送 submit（付儲存費）→ 把 segment 傳給 storage node。**全程用玩家自己的錢包簽，伺服器不持有私鑰。** | [`public/js/storage.js#L72-L116`](https://github.com/ConsssLab/web/blob/main/public/js/storage.js#L72-L116)<br>節點代理（Node）：[`proxy/api/index.js`](https://github.com/ConsssLab/web/blob/main/proxy/api/index.js) —— 節點是裸 IP + 非標準埠，Cloudflare Workers 打不到（error 1003 / 521），這一段必須跑在 Node 上 |
 | **0G Storage**<br>indexer 唯讀查詢 | 「上傳沒報錯」不等於存進去了。拿 root hash 回頭問 indexer，確認 storage node 真的收下並 finalized 才敢標成已存檔。唯讀、不需金鑰，評審可自行查證。 | [`functions/api/og/storage.js#L117-L159`](https://github.com/ConsssLab/web/blob/main/functions/api/og/storage.js#L117-L159) |
@@ -67,7 +72,10 @@
 | **0G Chain**<br>錨定寫入 | 戰報需要一個不可竄改、有時間戳的存在證明。40 bytes 結構化 calldata（魔術字 `CSSW` + 版本 + 戰績 + SHA-256），用合約建立交易送出，chainscan 上一眼認得出來。 | [`functions/api/og/shard.js#L85-L107`](https://github.com/ConsssLab/web/blob/main/functions/api/og/shard.js#L85-L107) · [`public/js/og.js#L235-L260`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L235-L260) |
 | **0G Chain**<br>鏈上回驗 | **這是整個專案的重點**：按了按鈕、錢包沒報錯，不代表資料真的在鏈上。所以再用 `eth_getTransactionByHash` 把交易讀回來、反解 calldata、跟本地碎片逐欄比對，四項全對才打勾。 | [`functions/api/og/verify.js#L19-L47`](https://github.com/ConsssLab/web/blob/main/functions/api/og/verify.js#L19-L47) · [`functions/api/og/verify.js#L49-L104`](https://github.com/ConsssLab/web/blob/main/functions/api/og/verify.js#L49-L104) |
 | **0G Chain**<br>鏈況與網路切換 | 標題頁即時顯示 Galileo 區塊高度；chainId **從鏈上實際讀回來**校準而不是寫死（0G 換過 chain ID 16601→16602，寫死會讓切鏈整個失敗）。 | [`functions/api/og/status.js#L60-L177`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L60-L177) · [`public/js/og.js#L167-L220`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L167-L220) |
-| — **敵方 AI agent**<br>（OpenAI，非 0G） | 對戰時每回合都要叫一次，需要低延遲，所以另外走 OpenAI。模型輸出一律當不可信資料重新過濾。 | [`functions/api/agent.js#L168-L276`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L168-L276) · [`public/js/ai.js#L16-L68`](https://github.com/ConsssLab/web/blob/main/public/js/ai.js#L16-L68) |
+| **0G Compute Network**<br>敵方 agent 本體 | 跟你對打的「遺忘者」每回合把整個盤面送進 enclave 裡的模型，讀盤、出牌、回一句嘲諷。**這是 TEE 主張能不能成立的關鍵** —— agent 不在 enclave 裡的話，「整場都是同一位」就無從談起。模型輸出一律當不可信資料重新過濾。 | [`functions/api/agent.js#L168-L276`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L168-L276) · [`public/js/ai.js#L16-L68`](https://github.com/ConsssLab/web/blob/main/public/js/ai.js#L16-L68) |
+| **0G Compute Network**<br>「同一位 agent」的證據鏈 | 每回合封存 `boardHash`（它看到的盤面）、`responseHash`（供應商回的**原始文字**）、provider 鏈上位址。整條鏈存進記憶碎片，被錨定上鏈的 SHA-256 蓋住 —— 第三方拿鏈上摘要就能重驗整場，不必相信我們的伺服器。 | [`functions/api/og/tee.js#L139-L156`](https://github.com/ConsssLab/web/blob/main/functions/api/og/tee.js#L139-L156) |
+| **0G Compute Network**<br>分級驗證（不給假綠燈） | 能證明到哪一層取決於供應商給了什麼。0G **目前不隨回應附簽名**，但每次都帶 provider 位址，所以最高只到 `same-provider`；provider 中途被換掉會落到 `changed`。**刻意不回傳 true/false** —— 把「只是紀錄一致」講成「已驗證」比沒有這個功能更糟。 | [`functions/api/og/tee.js#L158-L243`](https://github.com/ConsssLab/web/blob/main/functions/api/og/tee.js#L158-L243) · [`functions/api/og/same-agent.js#L34-L74`](https://github.com/ConsssLab/web/blob/main/functions/api/og/same-agent.js#L34-L74) |
+| **0G Compute Network**<br>模型可用性探測 | 設了金鑰**不等於**叫得動那個模型。曾經預設模型名在 router 上根本不存在，每回合 404 → 靜靜退回本地啟發式，而狀態燈一直是綠的。現在會實際打 `/v1/models` 確認模型存在並回報 `verifiability`。 | [`functions/api/og/tee.js#L89-L137`](https://github.com/ConsssLab/web/blob/main/functions/api/og/tee.js#L89-L137) |
 
 ### 評審可以自己打的端點
 
@@ -88,6 +96,13 @@ curl "https://conssswars-web.pages.dev/api/og/verify?tx=0x<你的交易hash>" | 
 
 # 賽道一：provider 的 attestation（enclave measurement 與公鑰）
 curl https://conssswars-web.pages.dev/api/og/attest | jq
+
+# 賽道一：驗一場對戰是不是同一位 agent（把證據鏈 POST 回來）
+curl -X POST https://conssswars-web.pages.dev/api/og/same-agent \
+  -H 'content-type: application/json' \
+  -d '{"chain":[{"turn":1,"providerAddress":"0xabc","model":"0gm-1.0-35b-a3b","provider":"0g-compute"},
+                {"turn":2,"providerAddress":"0xdef","model":"0gm-1.0-35b-a3b","provider":"0g-compute"}]}' | jq
+# ↑ 這個例子刻意把第 2 回合的 provider 換掉，會回 level: "changed" —— 換過是抓得到的
 ```
 
 ---
