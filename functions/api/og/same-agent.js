@@ -9,8 +9,8 @@
  * 分級的定義見 tee.js 的 verifyChain。
  */
 
-import { json, clampStr, clampInt } from './_shared.js';
-import { verifyChain } from './tee.js';
+import { json, clampStr, clampInt, ogComputeConfig } from './_shared.js';
+import { verifyChain, probeComputeModel } from './tee.js';
 
 const MAX_BODY = 32 * 1024;
 const MAX_TURNS = 12;
@@ -24,11 +24,14 @@ const normalizeTurn = (t) => ({
   signer: clampStr(t && t.signer, 200) || null,
   measurement: clampStr(t && t.measurement, 200) || null,
   proofId: clampStr(t && t.proofId, 120) || null,
+  // 實測 0G router 沒有回簽名，但每次回應都帶服務它的 provider 鏈上位址
+  // （標頭 x-provider / body x_0g_trace.provider）。這是目前拿得到的最強身分。
+  providerAddress: clampStr(t && t.providerAddress, 80) || null,
   model: clampStr(t && t.model, 60) || null,
   provider: clampStr(t && t.provider, 40) || null,
 });
 
-export async function onRequestPost({ request }) {
+export async function onRequestPost({ request, env }) {
   let payload;
   try {
     const raw = await request.text();
@@ -41,7 +44,12 @@ export async function onRequestPost({ request }) {
   const chain = Array.isArray(payload && payload.chain)
     ? payload.chain.slice(0, MAX_TURNS).map(normalizeTurn)
     : [];
-  const attestation = payload && typeof payload.attestation === 'object' ? payload.attestation : null;
+  // TEE 狀態由伺服器自己去 router 查，不採信前端送來的東西 ——
+  // 這是要證明給玩家看的結論，材料不能由被證明的那一方提供。
+  const probe = await probeComputeModel(ogComputeConfig(env));
+  const attestation = probe.ok
+    ? { modelInTee: probe.modelInTee, verifiability: probe.verifiability, teeType: probe.teeType, teeVerifier: probe.teeVerifier }
+    : { error: probe.error || null };
 
   const verdict = verifyChain(chain, attestation);
   return json({
@@ -53,8 +61,14 @@ export async function onRequestPost({ request }) {
       responseHash: t.responseHash,
       signed: Boolean(t.signature),
       signer: t.signer,
+      providerAddress: t.providerAddress,
       model: t.model,
-      sameAsFirst: !t.signer || !chain[0].signer ? null : t.signer === chain[0].signer,
+      // 「跟第一回合是不是同一個」—— 有簽章公鑰就比公鑰，沒有就比 provider 位址
+      sameAsFirst: (() => {
+        const mine = t.signer || t.providerAddress;
+        const first = chain[0].signer || chain[0].providerAddress;
+        return !mine || !first ? null : mine.toLowerCase() === first.toLowerCase();
+      })(),
     })),
   });
 }

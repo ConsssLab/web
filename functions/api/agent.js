@@ -13,9 +13,8 @@
  */
 
 import { sealTurn } from './og/tee.js';
+import { providerConfig } from './og/_shared.js';
 
-const OPENAI_BASE = 'https://api.openai.com/v1';
-const OG_ROUTER_BASE = 'https://router-api.0g.ai/v1';
 
 const MAX_BODY = 16 * 1024;
 const MAX_PLAYS = 4;
@@ -30,35 +29,16 @@ const json = (data, status = 200) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-/**
- * 預設 **0G Compute**，設 AI_PROVIDER=openai 才切回 OpenAI。
+/*
+ * 供應商設定改成從 og/_shared.js 匯入，不要在這裡再寫一份。
  *
- * 一開始是反過來的（預設 OpenAI，理由是每回合都要叫、要低延遲）。但那讓「TEE」
- * 變成空話：跟玩家對打的 agent 根本不在 enclave 裡，就無從證明「整場都是同一位」。
- * 要讓那個主張成立，敵方 agent 必須跑在 0G Compute 上並帶回可驗證的簽名。
- * 沒設金鑰時仍會退回本地啟發式，並照實標示「未接上模型」。
+ * 原本這裡有一份幾乎一樣的 providerConfig，包含寫死的模型名。結果是兩個真相來源：
+ * 改了 _shared.js 完全不會影響這支，而實際打 router 的正是這支。
+ * 那個寫死的模型名（deepseek-chat-v3-0324）在 router 上根本不存在，於是每一回合
+ * 都拿到 404 → 靜靜退回本地啟發式 —— 敵方 agent 從來沒有真的跑在 0G 上過，
+ * 而我們一直以為有。
  */
-function providerConfig(env) {
-  const choice = String(env.AI_PROVIDER || '0g').toLowerCase();
-  if (choice === '0g' || choice === '0g-compute') {
-    return {
-      id: '0g-compute',
-      label: '0G Compute Network Router',
-      base: env.OG_COMPUTE_BASE_URL || OG_ROUTER_BASE,
-      key: env.OG_COMPUTE_API_KEY,
-      model: env.OG_COMPUTE_MODEL || 'deepseek-chat-v3-0324',
-      keyName: 'OG_COMPUTE_API_KEY',
-    };
-  }
-  return {
-    id: 'openai',
-    label: 'OpenAI API',
-    base: env.OPENAI_BASE_URL || OPENAI_BASE,
-    key: env.OPENAI_API_KEY,
-    model: env.OPENAI_MODEL || 'gpt-4o-mini',
-    keyName: 'OPENAI_API_KEY',
-  };
-}
+
 
 const SYSTEM = `你是回合制策略遊戲《鏈州英雄傳 ConSSS Wars》裡的反派 AI agent「遺忘者」。
 你在鏈國 0G 進攻對方的「記憶核心」。你要贏，也要有角色感。
@@ -225,7 +205,12 @@ export async function onRequestPost({ request, env }) {
       body: JSON.stringify({
         model: cfg.model,
         temperature: 0.8,
-        max_tokens: 320,
+        max_tokens: 512,
+        // 0G 自家模型預設開著 thinking，實測 max_tokens 會被推理吃光、content 回空字串
+        // （reasoning_tokens 35 / finish_reason "length" / content ""）。解析不到 JSON
+        // 就會靜靜退回本地啟發式 —— 正是這個 bug 躲了那麼久的原因。
+        // reasoning_effort: 'none' 實測有效：reasoning_tokens 0，content 直接是乾淨的 JSON。
+        reasoning_effort: 'none',
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SYSTEM },

@@ -86,13 +86,32 @@ export function providerConfig(env) {
   };
 }
 
+/**
+ * 預設模型。**必須是 verifiability = TeeML 的那幾個之一。**
+ *
+ * router 的 /v1/models 會標三種狀態，差別直接決定我們的主張成不成立：
+ *
+ *   TeeML    模型本身跑在 TEE 裡          ← 只有這個撐得起「同一位 agent」
+ *   TeeTLS   TEE 只終結 TLS，推論在上游廠商那邊跑（大多數模型是這種）
+ *   （沒有） 完全沒有 TEE —— Claude / GPT 系列都屬於這類
+ *
+ * 撰文當下 TeeML 的只有五個：0gm-1.0-35b-a3b、0gm-1.0-35b-a3b-sia、glm-5.3、
+ * whisper-large-v3、z-image-turbo。選 0gm-1.0-35b-a3b 的理由：
+ *   · 支援 response_format —— 我們需要 JSON 模式，-sia 那個不支援
+ *   · glm-5.3 的 deep thinking 永遠開著且關不掉，逐回合呼叫太慢
+ *   · 便宜（$0.00000008 / prompt token）
+ *
+ * 換模型前先確認它是 TeeML，否則畫面上的 TEE 主張會變成空話。
+ */
+const OG_COMPUTE_DEFAULT_MODEL = '0gm-1.0-35b-a3b';
+
 /** 0G Compute Network Router 的設定。跟敵方 agent 用哪家無關，這個永遠指向 0G。 */
 export const ogComputeConfig = (env) => ({
   id: '0g-compute',
   label: '0G Compute Network Router',
   base: env.OG_COMPUTE_BASE_URL || OG_ROUTER_BASE,
   key: env.OG_COMPUTE_API_KEY,
-  model: env.OG_COMPUTE_MODEL || 'deepseek-chat-v3-0324',
+  model: env.OG_COMPUTE_MODEL || OG_COMPUTE_DEFAULT_MODEL,
   keyName: 'OG_COMPUTE_API_KEY',
 });
 

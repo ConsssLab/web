@@ -10,6 +10,7 @@
  */
 
 import { json, rpc, rpcUrlOf, indexerOf, GALILEO, providerConfig, ogComputeConfig } from './_shared.js';
+import { probeComputeModel } from './tee.js';
 
 /**
  * indexer 的活性探測：能拿到節點清單就算通。
@@ -74,7 +75,15 @@ export async function onRequestGet({ env }) {
       model: compute.model,
       endpoint: compute.base,
       configured: Boolean(compute.key),
-      tee: Boolean(compute.key),
+      // 這幾格由下面的 probeComputeModel 填。設了金鑰不等於叫得動那個模型，
+      // 更不等於那個模型跑在 TEE 裡 —— 兩件事都要實際查過才敢說。
+      modelAvailable: null,
+      verifiability: null,
+      modelInTee: null,
+      teeAttested: null,
+      teeType: null,
+      tee: false,
+      error: null,
     },
 
     // 敵方 AI agent 另外報，因為它照指定走 OpenAI（也可用 AI_PROVIDER=0g 整支切過來）
@@ -125,7 +134,7 @@ export async function onRequestGet({ env }) {
     },
   };
 
-  const [chainRes, indexerRes] = await Promise.all([
+  const [chainRes, indexerRes, computeRes] = await Promise.all([
     Promise.all([
       rpc(rpcUrl, 'eth_blockNumber'),
       rpc(rpcUrl, 'eth_chainId'),
@@ -135,6 +144,7 @@ export async function onRequestGet({ env }) {
       (err) => ({ ok: false, err }),
     ),
     probeIndexer(indexer),
+    probeComputeModel(compute),
   ]);
 
   if (chainRes.ok) {
@@ -147,6 +157,16 @@ export async function onRequestGet({ env }) {
     const e = chainRes.err;
     out.chain.error = String(e && e.message ? e.message : e).slice(0, 160);
   }
+
+  out.compute.modelAvailable = computeRes.ok;
+  out.compute.verifiability = computeRes.verifiability ?? null;
+  out.compute.modelInTee = computeRes.ok ? Boolean(computeRes.modelInTee) : null;
+  out.compute.teeAttested = computeRes.ok ? Boolean(computeRes.teeAttested) : null;
+  out.compute.teeType = computeRes.teeType ?? null;
+  // 只有「模型叫得動」而且「模型本身跑在 TEE 裡」才算 TEE 就緒
+  out.compute.tee = Boolean(computeRes.ok && computeRes.modelInTee);
+  out.compute.error = computeRes.ok ? null : computeRes.error || null;
+  if (computeRes.teeModels) out.compute.teeModels = computeRes.teeModels;
 
   out.storage.live = indexerRes.ok;
   out.storage.nodeCount = indexerRes.ok ? indexerRes.nodeCount : null;

@@ -51,7 +51,7 @@
 
 | 賽道 | 狀態 | 實測證據 |
 |---|---|---|
-| **0G Compute** | ✅ 通 | `deepseek-chat-v3-0324 · TEE 就緒`，戰後旁白由 enclave 產生 |
+| **0G Compute** | ✅ 通 | `0gm-1.0-35b-a3b`（**TeeML** · TDX · dstack）—— 敵方 agent 與戰後旁白都跑在 enclave 裡 |
 | **0G Storage** | ✅ 通 | 檔案 root `0x31dbf57395ca6d1b8f401f944453b846ce0c2a0cedddd97c27c4bc8a84d7cb25`<br>Flow 合約 submit tx `0x9c7377b88930c28412c95dfb452793c500233531264e09fef8537b91358b2218`<br>儲存費 92200934886 neuron，節點回報 `Single file upload completed` |
 | **0G Chain** | ✅ 通 | 區塊 `#54068232`、5 個確認，calldata 讀回後**四項全部相符**（摘要 / 勝負 / 回合數 / 記憶核心） |
 
@@ -60,14 +60,14 @@
 | 用了哪些 0G 技術 | 為什麼要用它 | 在哪一行用到 |
 |---|---|---|
 | **0G Compute Network**<br>TEE 可驗證推論 | 戰報要永久存檔，寫它的那個 agent 就不能是黑箱。金鑰在 pc.0g.ai 選 **Private（TEE enclave）** 開的，推論實際跑在 enclave 裡，不是只呼叫一個 OpenAI 相容端點。 | [`functions/api/narrate.js#L55-L134`](https://github.com/ConsssLab/web/blob/main/functions/api/narrate.js#L55-L134) |
-| **0G Compute Network**<br>Router 設定 | 敵方 agent 與旁白 agent 共用同一份供應商工廠，**兩者預設都指向 0G Compute**。要主張「整場都是同一位 agent」，對打的那個 agent 就必須在 enclave 裡 —— 所以預設不是 OpenAI。 | [`functions/api/og/_shared.js#L22-L23`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L22-L23) · [`functions/api/og/_shared.js#L68-L87`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L68-L87) · [`functions/api/og/_shared.js#L89-L97`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L89-L97) |
+| **0G Compute Network**<br>Router 設定 | 敵方 agent 與旁白 agent 共用同一份供應商工廠，**兩者預設都指向 0G Compute**。要主張「整場都是同一位 agent」，對打的那個 agent 就必須在 enclave 裡 —— 所以預設不是 OpenAI。 | [`functions/api/og/_shared.js#L22-L23`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L22-L23) · [`functions/api/og/_shared.js#L68-L87`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L68-L87) · [`functions/api/og/_shared.js#L108-L116`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L108-L116) |
 | **0G Storage**<br>真實寫入 | 記憶碎片要「永久保存」就必須真的落地。用官方 SDK 走完整協議：切 256-byte chunk 算 merkle root → 對 Flow 合約送 submit（付儲存費）→ 把 segment 傳給 storage node。**全程用玩家自己的錢包簽，伺服器不持有私鑰。** | [`public/js/storage.js#L72-L116`](https://github.com/ConsssLab/web/blob/main/public/js/storage.js#L72-L116)<br>節點代理（Node）：[`proxy/api/index.js`](https://github.com/ConsssLab/web/blob/main/proxy/api/index.js) —— 節點是裸 IP + 非標準埠，Cloudflare Workers 打不到（error 1003 / 521），這一段必須跑在 Node 上 |
 | **0G Storage**<br>indexer 唯讀查詢 | 「上傳沒報錯」不等於存進去了。拿 root hash 回頭問 indexer，確認 storage node 真的收下並 finalized 才敢標成已存檔。唯讀、不需金鑰，評審可自行查證。 | [`functions/api/og/storage.js#L117-L159`](https://github.com/ConsssLab/web/blob/main/functions/api/og/storage.js#L117-L159) |
-| **0G Storage**<br>節點活性探測 | 結果畫面的燈號要照實反映網路狀態，不能寫死成綠燈。 | [`functions/api/og/status.js#L34-L57`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L34-L57) |
+| **0G Storage**<br>節點活性探測 | 結果畫面的燈號要照實反映網路狀態，不能寫死成綠燈。 | [`functions/api/og/status.js#L35-L58`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L35-L58) |
 | **0G Chain**<br>錨定寫入 | 戰報需要一個不可竄改、有時間戳的存在證明。40 bytes 結構化 calldata（魔術字 `CSSW` + 版本 + 戰績 + SHA-256），用合約建立交易送出，chainscan 上一眼認得出來。 | [`functions/api/og/shard.js#L85-L107`](https://github.com/ConsssLab/web/blob/main/functions/api/og/shard.js#L85-L107) · [`public/js/og.js#L235-L260`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L235-L260) |
 | **0G Chain**<br>鏈上回驗 | **這是整個專案的重點**：按了按鈕、錢包沒報錯，不代表資料真的在鏈上。所以再用 `eth_getTransactionByHash` 把交易讀回來、反解 calldata、跟本地碎片逐欄比對，四項全對才打勾。 | [`functions/api/og/verify.js#L19-L47`](https://github.com/ConsssLab/web/blob/main/functions/api/og/verify.js#L19-L47) · [`functions/api/og/verify.js#L49-L104`](https://github.com/ConsssLab/web/blob/main/functions/api/og/verify.js#L49-L104) |
-| **0G Chain**<br>鏈況與網路切換 | 標題頁即時顯示 Galileo 區塊高度；chainId **從鏈上實際讀回來**校準而不是寫死（0G 換過 chain ID 16601→16602，寫死會讓切鏈整個失敗）。 | [`functions/api/og/status.js#L59-L157`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L59-L157) · [`public/js/og.js#L167-L220`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L167-L220) |
-| — **敵方 AI agent**<br>（OpenAI，非 0G） | 對戰時每回合都要叫一次，需要低延遲，所以另外走 OpenAI。模型輸出一律當不可信資料重新過濾。 | [`functions/api/agent.js#L188-L291`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L188-L291) · [`public/js/ai.js#L16-L68`](https://github.com/ConsssLab/web/blob/main/public/js/ai.js#L16-L68) |
+| **0G Chain**<br>鏈況與網路切換 | 標題頁即時顯示 Galileo 區塊高度；chainId **從鏈上實際讀回來**校準而不是寫死（0G 換過 chain ID 16601→16602，寫死會讓切鏈整個失敗）。 | [`functions/api/og/status.js#L60-L177`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L60-L177) · [`public/js/og.js#L167-L220`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L167-L220) |
+| — **敵方 AI agent**<br>（OpenAI，非 0G） | 對戰時每回合都要叫一次，需要低延遲，所以另外走 OpenAI。模型輸出一律當不可信資料重新過濾。 | [`functions/api/agent.js#L168-L276`](https://github.com/ConsssLab/web/blob/main/functions/api/agent.js#L168-L276) · [`public/js/ai.js#L16-L68`](https://github.com/ConsssLab/web/blob/main/public/js/ai.js#L16-L68) |
 
 ### 評審可以自己打的端點
 
@@ -273,7 +273,7 @@ API 金鑰請選 **Secret**（加密），不要用一般變數。
 | 變數 | 賽道 | 必要性 | 說明 |
 | --- | --- | --- | --- |
 | `OG_COMPUTE_API_KEY` | 賽道一 | **建議設** | 0G Compute Router 金鑰，從 [pc.0g.ai](https://pc.0g.ai) 取得。敵方 agent 與旁白 agent 都吃這把 |
-| `OG_COMPUTE_MODEL` | 賽道一 | 選用 | 預設 `deepseek-chat-v3-0324` |
+| `OG_COMPUTE_MODEL` | 賽道一 | 選用 | 預設 `0gm-1.0-35b-a3b`。**必須挑 `verifiability = TeeML` 的模型** —— `TeeTLS` 只有傳輸層在 enclave 裡，推論在上游廠商那邊跑，撐不起「同一位 agent」的主張 |
 | `OG_COMPUTE_ATTESTATION_URL` | 賽道一 | 想驗到 enclave 等級才需要 | provider 的 attestation 端點。沒設的話「同一位 agent」最多只能驗到 `signed`（同一把金鑰），畫面會照實降級顯示 |
 | `AI_PROVIDER` | 敵方 agent | 選用 | `0g`（**預設**）或 `openai`。切回 OpenAI 會讓「同一位 agent」的驗證降級 |
 | `OPENAI_API_KEY` | 敵方 agent | 只有切回 OpenAI 才要 | **只存在 Function 端**，不會進前端 bundle |
