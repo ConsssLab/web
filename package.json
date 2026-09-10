@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "wrangler pages dev public --compatibility-date=2024-09-01 --port 8788",
     "deploy": "wrangler pages deploy public --project-name conssswars-web --branch main",
-    "sim": "node scripts/simulate.mjs"
+    "sim": "node scripts/simulate.mjs",
+    "check:links": "node scripts/check-links.mjs"
   },
   "devDependencies": {
     "wrangler": "^3.78.0"
