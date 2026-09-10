@@ -226,6 +226,32 @@ function selfBase(req) {
 
 export const config = { api: { bodyParser: false } };
 
+/**
+ * 路徑一律自己從 req.url 解析，不靠框架給的 catch-all 參數。
+ *
+ * 實測 Vercel 上 req.query.path 拿不到東西（/api/health 直接落到 404 分支），
+ * 而那個參數的形狀本來就綁在檔名慣例與執行環境上 —— req.url 是 HTTP 本身的
+ * 東西，換平台也不會變。留 req.query.path 當備援，兩邊都空才算沒有路徑。
+ */
+function pathSegments(req) {
+  const pathname = new URL(req.url || '/', 'http://placeholder').pathname;
+  const fromUrl = pathname
+    .replace(/^\/+/, '')
+    .replace(/^api\/?/, '')
+    .split('/')
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return decodeURIComponent(s);
+      } catch {
+        return s;
+      }
+    });
+  if (fromUrl.length) return fromUrl;
+  const raw = req.query?.path ?? [];
+  return (Array.isArray(raw) ? raw : [raw]).filter(Boolean);
+}
+
 export default async function handler(req, res) {
   setCors(req, res);
   if (req.method === 'OPTIONS') {
@@ -233,8 +259,7 @@ export default async function handler(req, res) {
     return res.end();
   }
 
-  const raw = req.query?.path ?? [];
-  const segments = (Array.isArray(raw) ? raw : [raw]).filter(Boolean);
+  const segments = pathSegments(req);
 
   // ── /api/indexer ────────────────────────────────────
   if (segments[0] === 'indexer' && segments.length === 1) {
@@ -274,5 +299,5 @@ export default async function handler(req, res) {
     return send(res, 200, { ok: true, service: 'conssswars-zg-proxy' });
   }
 
-  return send(res, 404, { error: 'unknown proxy route' });
+  return send(res, 404, { error: 'unknown proxy route', saw: segments, url: req.url });
 }
