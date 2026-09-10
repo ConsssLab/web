@@ -22,7 +22,7 @@
  * 也不要因為欄位名猜錯就假裝驗過了 —— 那比沒有這個功能更糟。
  */
 
-import { sha256Hex } from './_shared.js';
+import { sha256Hex, ogComputeConfig } from './_shared.js';
 
 /** 這些鍵名任一出現（不分大小寫、忽略底線與連字號）就當成該類材料。 */
 const KEYS = {
@@ -30,7 +30,10 @@ const KEYS = {
   signer: ['signeraddress', 'signingaddress', 'signer', 'publickey', 'pubkey', 'signingkey', 'teepublickey', 'providerpubkey'],
   measurement: ['measurement', 'mrenclave', 'mrsigner', 'enclavemeasurement', 'codehash', 'imagehash', 'rtmr'],
   quote: ['quote', 'attestation', 'attestationreport', 'rareport', 'teequote', 'evidence'],
-  proofId: ['proofid', 'proof', 'requestid', 'inferenceid'],
+  proofId: ['proofid', 'proof', 'requestid', 'inferenceid', 'resid', 'reskey'],
+  // 實測回應裡真正拿得到的身分：服務這一次推論的 provider 鏈上位址。
+  // 標頭是 x-provider，body 是 x_0g_trace.provider，兩邊同值。
+  providerAddress: ['provider', 'provideraddress'],
 };
 
 const norm = (k) => String(k).toLowerCase().replace(/[-_\s]/g, '');
@@ -83,6 +86,56 @@ export function extractEvidence(headers, body) {
   return found;
 }
 
+/**
+ * 查這個 key 在 router 上看得到哪些模型，並回報設定的那個是什麼狀態。
+ *
+ * 為什麼要查：我們的預設模型名曾經寫成 router 上根本不存在的 deepseek-chat-v3-0324，
+ * 每一回合都拿到 404 → 靜靜退回本地啟發式。整段期間狀態燈是綠的，因為當時只檢查
+ * 「有沒有設金鑰」。有金鑰不代表叫得動那個模型。
+ *
+ * 順便把 verifiability 一起回報，因為它決定 TEE 的主張成不成立：
+ *   TeeML    模型本身跑在 TEE 裡          ← 只有這個撐得起「同一位 agent」
+ *   TeeTLS   TEE 只終結 TLS，推論在上游廠商那邊
+ *   （沒有） 完全沒有 TEE
+ */
+export async function probeComputeModel(cfg, timeoutMs = 6000) {
+  if (!cfg.key) return { ok: false, error: `未設定 ${cfg.keyName}` };
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${cfg.base.replace(/\/+$/, '')}/models`, {
+      signal: ac.signal,
+      headers: { authorization: `Bearer ${cfg.key}`, accept: 'application/json' },
+    });
+    if (!res.ok) return { ok: false, error: `models ${res.status}` };
+    const data = await res.json();
+    const list = Array.isArray(data && data.data) ? data.data : [];
+    const hit = list.find((m) => m && m.id === cfg.model);
+    if (!hit) {
+      return {
+        ok: false,
+        available: list.length,
+        error: `router 上沒有 ${cfg.model} 這個模型`,
+        teeModels: list.filter((m) => m && m.verifiability === 'TeeML').map((m) => m.id).slice(0, 8),
+      };
+    }
+    return {
+      ok: true,
+      available: list.length,
+      verifiability: hit.verifiability || null,
+      teeAttested: Boolean(hit.tee_attested),
+      teeType: hit.tee_type || null,
+      teeVerifier: hit.tee_verifier || null,
+      // TeeTLS 只保證傳輸層在 enclave 裡，推論本身不是 —— 不能拿來主張「同一位 agent」
+      modelInTee: hit.verifiability === 'TeeML',
+    };
+  } catch (err) {
+    return { ok: false, error: err && err.name === 'AbortError' ? 'models 逾時' : String(err).slice(0, 80) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** 這一回合的證據封包。boardHash 綁住「它看到的盤面」，responseHash 綁住「它說了什麼」。 */
 export async function sealTurn({ turn, view, legal, rawResponse, headers, body, model, provider }) {
   const evidence = extractEvidence(headers, body);
@@ -96,6 +149,7 @@ export async function sealTurn({ turn, view, legal, rawResponse, headers, body, 
     provider: provider || null,
     signature: evidence.signature ? shorten(evidence.signature) : null,
     signer: evidence.signer ? shorten(evidence.signer) : null,
+    providerAddress: evidence.providerAddress ? shorten(evidence.providerAddress) : null,
     measurement: evidence.measurement ? shorten(evidence.measurement) : null,
     proofId: evidence.proofId ? shorten(evidence.proofId) : null,
   };
@@ -123,53 +177,66 @@ export function verifyChain(chain, attestation) {
   const turns = Array.isArray(chain) ? chain : [];
   if (turns.length === 0) return { level: 'none', ok: false, turns: 0, reason: '沒有任何回合的紀錄' };
 
-  const signers = new Set(turns.map((t) => t.signer).filter(Boolean));
+  const lower = (v) => (v ? String(v).toLowerCase() : null);
+  const signers = new Set(turns.map((t) => lower(t.signer)).filter(Boolean));
+  const addresses = new Set(turns.map((t) => lower(t.providerAddress)).filter(Boolean));
   const models = new Set(turns.map((t) => t.model).filter(Boolean));
   const providers = new Set(turns.map((t) => t.provider).filter(Boolean));
   const signed = turns.filter((t) => t.signature).length;
+  const addressed = turns.filter((t) => t.providerAddress).length;
 
+  const allSigned = signed === turns.length;
+  const allAddressed = addressed === turns.length;
+  const sameSigner = signers.size === 1;
+  const sameAddress = addresses.size === 1;
   const sameModel = models.size <= 1;
   const sameProvider = providers.size <= 1;
-  const sameSigner = signers.size === 1;
-  const allSigned = signed === turns.length;
 
-  const attestedKey = attestation && (attestation.publicKey || attestation.signer) || null;
+  const attestedKey = (attestation && (attestation.publicKey || attestation.signer)) || null;
   const keyMatches =
-    Boolean(attestedKey) && sameSigner && [...signers][0]
-      ? String([...signers][0]).toLowerCase().includes(String(attestedKey).toLowerCase().slice(0, 16))
+    Boolean(attestedKey) && sameSigner
+      ? String([...signers][0]).includes(String(attestedKey).toLowerCase().slice(0, 16))
       : false;
+  const modelInTee = Boolean(attestation && attestation.modelInTee);
 
-  let level = 'none';
-  if (allSigned && sameSigner && keyMatches && attestation && attestation.measurement) level = 'attested';
+  let level;
+  if (signers.size > 1 || addresses.size > 1) level = 'changed';
+  else if (allSigned && sameSigner && keyMatches && attestation && attestation.measurement) level = 'attested';
   else if (allSigned && sameSigner) level = 'signed';
-  else if (signed > 0 && signers.size > 1) level = 'changed';
+  else if (allAddressed && sameAddress && modelInTee) level = 'same-provider';
+  else if (allAddressed && sameAddress) level = 'same-provider-untrusted';
   else if (sameModel && sameProvider) level = 'consistent';
+  else level = 'none';
 
-  const noAttest = attestation && attestation.error ? `（${attestation.error}）` : '';
-  const reason =
-    level === 'attested'
-      ? '每回合都有簽名、同一把 enclave 公鑰，且對得上 attestation 的 measurement'
-      : level === 'signed'
-        ? `每回合都有簽名且出自同一把公鑰，但沒取得 attestation${noAttest}，無法證明那把金鑰長在 enclave 裡`
-        : level === 'changed'
-          ? `簽章公鑰中途換過（這 ${turns.length} 個回合出現了 ${signers.size} 把不同的公鑰）—— 這正是「agent 被換掉」的樣子，不能主張是同一位`
-          : level === 'consistent'
-            ? signed === 0
-              ? '供應商沒有回傳任何可驗證的簽名。目前只能說每回合的供應商與模型相同 —— 這是我們伺服器的紀錄，不是密碼學證明'
-              : `只有 ${signed}/${turns.length} 個回合帶回簽名，其餘沒有，不足以主張整場都被簽過。供應商與模型本身是一致的，但那只是我們伺服器的紀錄`
-            : '每回合的供應商或模型不一致，無法主張是同一位 agent';
+  const teeTag = attestation && attestation.verifiability ? `（${attestation.verifiability}${attestation.teeType ? ' · ' + attestation.teeType : ''}）` : '';
+  const reason = {
+    attested: '每回合都有簽名、同一把 enclave 公鑰，且對得上 attestation 的 measurement',
+    signed: `每回合都有簽名且出自同一把公鑰，但沒取得 attestation${attestation && attestation.error ? `（${attestation.error}）` : ''}，無法證明那把金鑰長在 enclave 裡`,
+    'same-provider': `每一回合都由同一個 provider（${[...addresses][0]}）服務，而該模型在 router 上登記為在 TEE 內執行${teeTag}。0G 目前不隨回應附簽名，所以這一級靠的是 router 的回報，不是我們自己驗過的密碼學證明`,
+    'same-provider-untrusted': `每一回合都由同一個 provider（${[...addresses][0]}）服務，但該模型沒有登記為在 TEE 內執行 —— 換一個 verifiability = TeeML 的模型才撐得起 TEE 的主張`,
+    changed: signers.size > 1
+      ? `簽章公鑰中途換過（出現 ${signers.size} 把）—— 這正是「agent 被換掉」的樣子`
+      : `provider 位址中途換過（出現 ${addresses.size} 個）—— 不能主張整場是同一位 agent`,
+    consistent: `拿不到 provider 位址也拿不到簽名（${signed}/${turns.length} 回合有簽名）。目前只能說每回合的供應商與模型相同 —— 這是我們伺服器的紀錄，不是密碼學證明`,
+    none: '每回合的供應商或模型不一致，無法主張是同一位 agent',
+  }[level];
 
   return {
     level,
+    // ok 只留給真正驗過密碼學證明的那一級。same-provider 是有意義的證據，但不是證明。
     ok: level === 'attested',
     turns: turns.length,
     signedTurns: signed,
+    addressedTurns: addressed,
     sameSigner,
+    sameAddress,
     sameModel,
     sameProvider,
     signer: sameSigner ? [...signers][0] : null,
+    providerAddress: sameAddress ? [...addresses][0] : null,
     models: [...models],
     providers: [...providers],
+    verifiability: (attestation && attestation.verifiability) || null,
     measurement: (attestation && attestation.measurement) || null,
     reason,
   };

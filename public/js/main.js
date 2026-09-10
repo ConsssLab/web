@@ -890,10 +890,19 @@ async function pollStorage(root, note, attempts = 6) {
  * 結果分四級，刻意不做成通過／不通過：能證明到哪一層完全取決於供應商回了什麼。
  * 把「只是紀錄一致」畫成綠燈，比沒有這個功能更糟。
  */
+/**
+ * 等級的文案刻意分得很細，因為能證明到哪一層完全取決於供應商給了什麼材料。
+ *
+ * 實測 0G router **不隨回應附簽名**，但每次回應都帶服務它的 provider 鏈上位址
+ * （標頭 x-provider）。所以現實中最常落在 same-provider —— 它是有意義的證據
+ * （provider 中途被換掉會被抓到），但不是我們自己驗過的密碼學證明，文案必須講清楚。
+ */
 const TEE_BADGE = {
   attested: '已驗證 · enclave 等級',
   signed: '部分驗證 · 缺 attestation',
-  changed: '⚠ 公鑰中途換過',
+  'same-provider': '同一個 provider · TEE 模型',
+  'same-provider-untrusted': '同一個 provider · 但非 TEE 模型',
+  changed: '⚠ 中途換過 agent',
   consistent: '未驗證 · 僅紀錄一致',
   none: '無法驗證',
 };
@@ -906,15 +915,12 @@ async function verifyTee() {
   btn.textContent = '驗證中…';
 
   try {
-    // attestation 拿不到不算失敗 —— 它只是決定最高能驗到哪一級
-    const attestation = await fetch('/api/og/attest', { headers: { accept: 'application/json' } })
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null);
-
+    // TEE 狀態由伺服器自己去 router 查 —— 要證明給玩家看的結論，
+    // 材料不能由被證明的那一方（前端）提供。
     const res = await fetch('/api/og/same-agent', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chain: game.teeChain, attestation }),
+      body: JSON.stringify({ chain: game.teeChain }),
     });
     if (!res.ok) throw new Error(`same-agent ${res.status}`);
     const v = await res.json();
@@ -925,13 +931,15 @@ async function verifyTee() {
     badge.dataset.level = v.level;
     reason.textContent = v.reason;
 
-    // 逐回合亮燈：同一把公鑰＝藍、換過＝橘、沒簽名＝空心
+    // 逐回合亮燈：跟第一回合同一個身分＝藍、換過＝橘、完全沒身分＝空心。
+    // 身分優先看簽章公鑰，沒有就看 provider 位址。
     const list = $('tee-turns');
     list.textContent = '';
     for (const t of v.perTurn || []) {
       const li = document.createElement('li');
       li.className = 'tee-turn';
-      li.dataset.state = !t.signed ? 'unsigned' : t.sameAsFirst === false ? 'changed' : 'ok';
+      const identified = t.signed || Boolean(t.providerAddress);
+      li.dataset.state = !identified ? 'unsigned' : t.sameAsFirst === false ? 'changed' : 'ok';
       const dot = document.createElement('span');
       dot.className = 'tee-turn-dot';
       const label = document.createElement('span');
@@ -950,10 +958,11 @@ async function verifyTee() {
     const meta = $('tee-meta');
     meta.textContent = '';
     const rows = [
-      ['回合數', `${v.signedTurns} / ${v.turns} 有簽名`],
+      ['回合數', `${v.turns} 回合，其中 ${v.addressedTurns ?? 0} 回合帶有 provider 位址、${v.signedTurns} 回合帶有簽名`],
       ['模型', (v.models || []).join(' / ') || '—'],
-      ['供應商', (v.providers || []).join(' / ') || '—'],
-      ['簽章公鑰', v.signer || '未取得'],
+      ['TEE 等級', v.verifiability ? `${v.verifiability}（TeeML 才是模型跑在 enclave 裡）` : '未取得'],
+      ['provider 位址', v.providerAddress || '未取得或中途換過'],
+      ['簽章公鑰', v.signer || '0G 目前不隨回應附簽名'],
       ['enclave measurement', v.measurement || '未取得'],
     ];
     for (const [k, val] of rows) {

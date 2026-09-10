@@ -1269,6 +1269,13 @@ body {
 
 .tee-badge[data-level='attested'] { background: var(--blue); color: #fff; border-color: var(--blue); }
 .tee-badge[data-level='signed'] { background: #F2C36B; color: var(--ink); }
+/*
+ * same-provider 是實測下最常見的一級：每回合都同一個 provider，模型登記為 TeeML。
+ * 它是有意義的證據，但不是我們自己驗過的密碼學證明 —— 所以給琥珀色，不給藍色。
+ * 藍色只留給 attested。
+ */
+.tee-badge[data-level='same-provider'] { background: #F2C36B; color: var(--ink); }
+.tee-badge[data-level='same-provider-untrusted'] { background: var(--paper-edge); color: var(--muted); }
 .tee-badge[data-level='consistent'] { background: var(--paper-edge); color: var(--muted); }
 .tee-badge[data-level='changed'] { background: var(--terracotta); color: #fff; border-color: var(--terracotta); }
 .tee-badge[data-level='none'] { background: var(--terracotta); color: #fff; border-color: var(--terracotta); }

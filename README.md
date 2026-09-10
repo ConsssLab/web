@@ -51,7 +51,7 @@
 
 | 賽道 | 狀態 | 實測證據 |
 |---|---|---|
-| **0G Compute** | ✅ 通 | `deepseek-chat-v3-0324 · TEE 就緒`，戰後旁白由 enclave 產生 |
+| **0G Compute** | ✅ 通 | `0gm-1.0-35b-a3b`（**TeeML** · TDX · dstack）—— 敵方 agent 與戰後旁白都跑在 enclave 裡 |
 | **0G Storage** | ✅ 通 | 檔案 root `0x31dbf57395ca6d1b8f401f944453b846ce0c2a0cedddd97c27c4bc8a84d7cb25`<br>Flow 合約 submit tx `0x9c7377b88930c28412c95dfb452793c500233531264e09fef8537b91358b2218`<br>儲存費 92200934886 neuron，節點回報 `Single file upload completed` |
 | **0G Chain** | ✅ 通 | 區塊 `#54068232`、5 個確認，calldata 讀回後**四項全部相符**（摘要 / 勝負 / 回合數 / 記憶核心） |
 
@@ -273,7 +273,7 @@ API 金鑰請選 **Secret**（加密），不要用一般變數。
 | 變數 | 賽道 | 必要性 | 說明 |
 | --- | --- | --- | --- |
 | `OG_COMPUTE_API_KEY` | 賽道一 | **建議設** | 0G Compute Router 金鑰，從 [pc.0g.ai](https://pc.0g.ai) 取得。敵方 agent 與旁白 agent 都吃這把 |
-| `OG_COMPUTE_MODEL` | 賽道一 | 選用 | 預設 `deepseek-chat-v3-0324` |
+| `OG_COMPUTE_MODEL` | 賽道一 | 選用 | 預設 `0gm-1.0-35b-a3b`。**必須挑 `verifiability = TeeML` 的模型** —— `TeeTLS` 只有傳輸層在 enclave 裡，推論在上游廠商那邊跑，撐不起「同一位 agent」的主張 |
 | `OG_COMPUTE_ATTESTATION_URL` | 賽道一 | 想驗到 enclave 等級才需要 | provider 的 attestation 端點。沒設的話「同一位 agent」最多只能驗到 `signed`（同一把金鑰），畫面會照實降級顯示 |
 | `AI_PROVIDER` | 敵方 agent | 選用 | `0g`（**預設**）或 `openai`。切回 OpenAI 會讓「同一位 agent」的驗證降級 |
 | `OPENAI_API_KEY` | 敵方 agent | 只有切回 OpenAI 才要 | **只存在 Function 端**，不會進前端 bundle |
