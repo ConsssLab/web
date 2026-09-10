@@ -486,7 +486,14 @@ body {
   min-width: 0;
 }
 
-.hud-side--hero {
+/*
+ * 靠外側的那一方要把核心圖示推到外緣、文字靠右。
+ *
+ * 這個修飾詞原本掛在 hero 上，因為 HUD 曾經是「遺忘者在左、玩家在右」。
+ * 現在改成玩家在左、遺忘者在右（跟棋盤上「你在左、遺忘者在右」一致），
+ * 所以反轉的是 foe 這一側。
+ */
+.hud-side--foe {
   flex-direction: row-reverse;
   text-align: right;
 }

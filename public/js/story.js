@@ -4,7 +4,7 @@
  */
 
 export const TITLE = {
-  main: '鏈之英雄傳',
+  main: '鏈州英雄傳',
   en: 'ConSSS Wars',
   sub: '無重之憶',
   subEn: 'Weightless Memory',

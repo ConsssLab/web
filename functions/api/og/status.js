@@ -92,6 +92,13 @@ export async function onRequestGet({ env }) {
       role: '記憶碎片永久存檔（前端用玩家錢包上傳）',
       indexer,
       network: 'turbo',
+      // 上傳走哪一支代理。
+      //
+      // 預設是同源的 Pages Function，但那條路在 Cloudflare 上被平台擋死：
+      // Worker 不能打裸 IP（error 1003），也打不到 5678 這種非標準埠（521），
+      // 而 0G 的 storage node 兩樣都佔。設 OG_ZG_PROXY_BASE 指向 proxy/
+      // 那支 Node 服務，上傳才會真的通。前端照這個值決定要打哪裡。
+      zgProxy: env.OG_ZG_PROXY_BASE ? String(env.OG_ZG_PROXY_BASE).replace(/\/+$/, '') : '/api/og/zg',
       // 預設由前端用玩家錢包上傳（public/js/storage.js）；
       // 設了 OG_STORAGE_UPLOAD_URL 就改由 Function 轉發給自架 gateway。
       uploadMode: env.OG_STORAGE_UPLOAD_URL ? 'server-gateway' : 'client-wallet',

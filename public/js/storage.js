@@ -21,11 +21,20 @@ const ETHERS_URL = '/vendor/ethers.min.js';
  * indexer 走自家的同源代理，不直接打 0g.ai。
  *
  * 直接打的話 indexer 本身通得過，但它回傳的 storage node 是另一批主機，
- * 那些主機沒為瀏覽器開 CORS，SDK 傳 segment 時只會拿到一句沒有內容的
- * "Network Error"。代理會把節點網址一併改寫成走同一支 Function，
- * 整條上傳鏈路就都是同源的了。見 functions/api/og/zg/[[path]].js。
+ * 而且長這樣：http://34.19.125.196:5678 —— 裸 IP、明文 http。
+ * 對一個 https 頁面來說那是 mixed content，瀏覽器連送都不送就擋掉，
+ * SDK 只會拿到一句沒有內容的 "Network Error"。代理會把節點網址一併改寫成
+ * 走同一支 Function，整條上傳鏈路就都是同源的 https 了。
+ *
+ * 代理那端還有第二關：Cloudflare 不讓 Worker 對裸 IP 發出站請求（error 1003），
+ * 所以轉發前會把 IP 換成解析回同一個 IP 的 DNS 名稱。
+ * 兩件事都在 functions/api/og/zg/[[path]].js。
  */
-const DEFAULT_INDEXER = '/api/og/zg/indexer';
+const DEFAULT_PROXY_BASE = '/api/og/zg';
+
+/** 代理的 indexer 端點。proxyBase 由 /api/og/status 下發，見那支的 zgProxy。 */
+const indexerUrl = (proxyBase) =>
+  new URL(`${(proxyBase || DEFAULT_PROXY_BASE).replace(/\/+$/, '')}/indexer`, location.origin).toString();
 
 /** EVM RPC 維持直連：它走 MetaMask 與公開節點，實測瀏覽器打得通。 */
 const DEFAULT_RPC = 'https://evmrpc-testnet.0g.ai';
@@ -66,7 +75,7 @@ export async function computeRoot(shard) {
  * onStep 會在每個階段被呼叫一次，讓畫面可以照實顯示進度 ——
  * 這段要跟鏈上互動，慢的時候十幾秒跑不掉，不能讓玩家對著沒反應的畫面等。
  */
-export async function upload(shard, { indexer, rpc, onStep } = {}) {
+export async function upload(shard, { proxyBase, rpc, onStep } = {}) {
   const step = (msg) => {
     if (typeof onStep === 'function') onStep(msg);
   };
@@ -98,7 +107,7 @@ export async function upload(shard, { indexer, rpc, onStep } = {}) {
   step('送出 Flow 合約 submit 並上傳 segment…');
   // 這裡刻意忽略呼叫端傳進來的真實 indexer 網址，一律走代理 ——
   // 直連的話 segment 那步會被 storage node 的 CORS 擋掉。
-  const client = new zg.Indexer(new URL(DEFAULT_INDEXER, location.origin).toString());
+  const client = new zg.Indexer(indexerUrl(proxyBase));
   const [tx, err] = await client.upload(data, rpc || DEFAULT_RPC, signer);
   if (err) throw new Error(String(err && err.message ? err.message : err));
 
@@ -114,9 +123,9 @@ export async function upload(shard, { indexer, rpc, onStep } = {}) {
  * 那就是對方沒開 CORS，而不是玩家網路有問題 —— 這兩件事的處理方式差很多，
  * 不講清楚玩家只會一直重試。
  */
-export async function probeIndexerFromBrowser(indexer) {
+export async function probeIndexerFromBrowser(proxyBase) {
   try {
-    const res = await fetch(indexer, {
+    const res = await fetch(indexerUrl(proxyBase), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'indexer_getShardedNodes', params: [] }),
@@ -134,7 +143,7 @@ export async function probeIndexerFromBrowser(indexer) {
  * 交叉比對才能給出正確的診斷，光看錯誤字串會把 CORS 誤判成網路問題。
  * 不管分到哪一類，原始訊息都保留在後面，否則出事時完全無從查起。
  */
-export async function explainError(err, { indexer, serverSaysLive } = {}) {
+export async function explainError(err, { proxyBase, serverSaysLive } = {}) {
   const msg = String((err && (err.message || err.reason)) || err);
 
   if (/insufficient|balance|funds/i.test(msg)) {
@@ -147,18 +156,26 @@ export async function explainError(err, { indexer, serverSaysLive } = {}) {
     return '錢包已經有一個待處理的請求。請打開 MetaMask 按下確認，不要重複點這顆按鈕。';
   }
 
+  if (/status code 403|status code 502|\b1003\b/.test(msg)) {
+    return `0G storage node 的轉發被拒（403/502）。節點是裸 IP，Cloudflare 不讓 Worker 直接打裸 IP（error 1003），我們改用會解析回同一個 IP 的 DNS 名稱繞過 —— 這個錯誤代表繞法在這個節點上沒生效。原始錯誤：${msg.slice(0, 120)}`;
+  }
+
+  if (/mixed content|insecure .*(request|endpoint)|must be served over https/i.test(msg)) {
+    return `瀏覽器擋掉了對 storage node 的明文連線（mixed content）。這一版應該全程走同源代理才對 —— 請強制重新整理（Shift+Reload）確認拿到的是最新的 js。原始錯誤：${msg.slice(0, 120)}`;
+  }
+
   if (/failed to fetch|network|fetch|timeout|ECONN|load failed/i.test(msg)) {
-    if (indexer) {
-      const probe = await probeIndexerFromBrowser(indexer);
-      if (!probe.reachable && serverSaysLive) {
-        return `0G Storage 的 indexer 不允許瀏覽器直接連線（CORS）—— 伺服器端連得到，這個瀏覽器連不到。這是節點端的限制，不是你的網路問題。原始錯誤：${msg.slice(0, 100)}`;
-      }
-      if (!probe.reachable) {
-        return `連不上 0G Storage 節點（伺服器端也連不到，可能是節點在維護）。原始錯誤：${msg.slice(0, 100)}`;
-      }
-      return `indexer 連得到，但上傳過程中斷 —— 可能是卡在後面的 storage node 或 Flow 合約那步。原始錯誤：${msg.slice(0, 140)}`;
+    // 現在 indexer 與 storage node 都走同源代理，所以先確認代理自己活著。
+    // 代理通、上傳還是斷，那就是斷在代理後面（節點或 Flow 合約），
+    // 不是瀏覽器的 CORS / mixed content 問題。
+    const probe = await probeIndexerFromBrowser(proxyBase);
+    if (!probe.reachable) {
+      return `連不上 0G 代理（${indexerUrl(proxyBase)}）—— 代理沒部署，或它沒放行這個網域的 CORS。原始錯誤：${msg.slice(0, 100)}`;
     }
-    return `連線失敗：${msg.slice(0, 160)}`;
+    if (!serverSaysLive) {
+      return `代理正常，但伺服器端也連不到 0G 的 indexer，可能是節點在維護。原始錯誤：${msg.slice(0, 100)}`;
+    }
+    return `代理與 indexer 都正常，上傳斷在後面那一步（storage node 傳 segment 或 Flow 合約 submit）。原始錯誤：${msg.slice(0, 140)}`;
   }
 
   return msg.slice(0, 220);

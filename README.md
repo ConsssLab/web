@@ -2,7 +2,7 @@
 
 <img src="public/images/logo.svg" alt="ConSSS Wars" width="150">
 
-# 鏈之英雄傳 ConSSS Wars
+# 鏈州英雄傳 ConSSS Wars
 
 ### 第 0 章 · 無重之憶 — Weightless Memory
 
@@ -47,11 +47,21 @@
 摘要 ──合約建立交易──▶ 錨定到 0G Chain ──讀回來逐欄比對──▶ ✓
 ```
 
+**三條賽道都已在 Galileo 測試網跑通**，下面是其中一場的實際紀錄（可自行到瀏覽器重現）：
+
+| 賽道 | 狀態 | 實測證據 |
+|---|---|---|
+| **0G Compute** | ✅ 通 | `deepseek-chat-v3-0324 · TEE 就緒`，戰後旁白由 enclave 產生 |
+| **0G Storage** | ✅ 通 | 檔案 root `0x31dbf57395ca6d1b8f401f944453b846ce0c2a0cedddd97c27c4bc8a84d7cb25`<br>Flow 合約 submit tx `0x9c7377b88930c28412c95dfb452793c500233531264e09fef8537b91358b2218`<br>儲存費 92200934886 neuron，節點回報 `Single file upload completed` |
+| **0G Chain** | ✅ 通 | 區塊 `#54068232`、5 個確認，calldata 讀回後**四項全部相符**（摘要 / 勝負 / 回合數 / 記憶核心） |
+
+> 賽道二繞了很久才通。0G 的 storage node 是**裸 IP + 明文 http + 5678 埠**，瀏覽器擋 mixed content、Cloudflare Workers 又擋裸 IP（`error 1003`）與非標準埠（`error 521`），所以節點轉發那一小段必須跑在 Node 上（[`proxy/`](proxy/)）。細節寫在 [proxy/README.md](proxy/README.md)。
+
 | 用了哪些 0G 技術 | 為什麼要用它 | 在哪一行用到 |
 |---|---|---|
 | **0G Compute Network**<br>TEE 可驗證推論 | 戰報要永久存檔，寫它的那個 agent 就不能是黑箱。金鑰在 pc.0g.ai 選 **Private（TEE enclave）** 開的，推論實際跑在 enclave 裡，不是只呼叫一個 OpenAI 相容端點。 | [`functions/api/narrate.js#L55-L134`](https://github.com/ConsssLab/web/blob/main/functions/api/narrate.js#L55-L134) |
 | **0G Compute Network**<br>Router 設定 | 敵方 agent 與旁白 agent 共用同一份供應商工廠，把 `AI_PROVIDER` 改成 `0g` 就能整支切過去，不用改程式碼。 | [`functions/api/og/_shared.js#L22-L23`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L22-L23) · [`functions/api/og/_shared.js#L82-L90`](https://github.com/ConsssLab/web/blob/main/functions/api/og/_shared.js#L82-L90) |
-| **0G Storage**<br>真實寫入 | 記憶碎片要「永久保存」就必須真的落地。用官方 SDK 走完整協議：切 256-byte chunk 算 merkle root → 對 Flow 合約送 submit（付儲存費）→ 把 segment 傳給 storage node。**全程用玩家自己的錢包簽，伺服器不持有私鑰。** | [`public/js/storage.js#L53-L85`](https://github.com/ConsssLab/web/blob/main/public/js/storage.js#L53-L85) |
+| **0G Storage**<br>真實寫入 | 記憶碎片要「永久保存」就必須真的落地。用官方 SDK 走完整協議：切 256-byte chunk 算 merkle root → 對 Flow 合約送 submit（付儲存費）→ 把 segment 傳給 storage node。**全程用玩家自己的錢包簽，伺服器不持有私鑰。** | [`public/js/storage.js#L65-L108`](https://github.com/ConsssLab/web/blob/main/public/js/storage.js#L65-L108)<br>節點代理（Node）：[`proxy/api/index.js`](https://github.com/ConsssLab/web/blob/main/proxy/api/index.js) —— 節點是裸 IP + 非標準埠，Cloudflare Workers 打不到（error 1003 / 521），這一段必須跑在 Node 上 |
 | **0G Storage**<br>indexer 唯讀查詢 | 「上傳沒報錯」不等於存進去了。拿 root hash 回頭問 indexer，確認 storage node 真的收下並 finalized 才敢標成已存檔。唯讀、不需金鑰，評審可自行查證。 | [`functions/api/og/storage.js#L76-L114`](https://github.com/ConsssLab/web/blob/main/functions/api/og/storage.js#L76-L114) |
 | **0G Storage**<br>節點活性探測 | 結果畫面的燈號要照實反映網路狀態，不能寫死成綠燈。 | [`functions/api/og/status.js#L34-L57`](https://github.com/ConsssLab/web/blob/main/functions/api/og/status.js#L34-L57) |
 | **0G Chain**<br>錨定寫入 | 戰報需要一個不可竄改、有時間戳的存在證明。40 bytes 結構化 calldata（魔術字 `CSSW` + 版本 + 戰績 + SHA-256），用合約建立交易送出，chainscan 上一眼認得出來。 | [`functions/api/og/shard.js#L62-L84`](https://github.com/ConsssLab/web/blob/main/functions/api/og/shard.js#L62-L84) · [`public/js/og.js#L174-L199`](https://github.com/ConsssLab/web/blob/main/public/js/og.js#L174-L199) |

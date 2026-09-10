@@ -353,9 +353,9 @@ export function heroPortrait(key) {
  * 所以按順序試，載得起來的那個就是。找不到任何一個就退回 art.js 現畫的 inline SVG。
  */
 const HERO_SHEET_CANDIDATES = [
-  '/images/heroes.png',
+  '/images/heroes.jpeg', // repo 裡實際放的那一個，永遠第一個試
   '/images/heroes.jpg',
-  '/images/heroes.jpeg',
+  '/images/heroes.png',
   '/images/heroes.webp',
 ];
 
@@ -375,20 +375,24 @@ function tryLoad(src) {
 }
 
 /**
- * 四個候選同時載，不要一個一個等。
+ * 依序試，實際存在的那個副檔名排第一個。
  *
- * 線上有 SPA fallback（找不到檔案就回 index.html 200），所以不存在的副檔名
- * 不會快速 404，而是回一整份 HTML 才失敗。依序試的話光是前兩個就足以讓
- * 簡報畫面先畫完、退回 SVG。平行跑就只花「最慢的那一個」的時間，
- * 再依候選順序挑第一個成功的，結果仍然是確定的。
+ * 之前是四個平行載，因為當時線上有 SPA fallback：找不到的檔案不會快速 404，
+ * 而是回一整份 index.html 才失敗，依序試會拖慢開場。那條 fallback 已經拿掉，
+ * 不存在的檔案現在直接 404，所以依序試的代價回到正常。
+ *
+ * 改回依序還有一個好處：正常情況只發一個請求就命中，console 不會多出三筆
+ * 紅色的 404。評審會打開 console 看，那三筆雜訊會讓人以為東西壞了。
  */
 export async function probeHeroSheet() {
   if (sheetState !== null) return sheetState;
-  const results = await Promise.all(HERO_SHEET_CANDIDATES.map(tryLoad));
-  const hit = results.findIndex(Boolean);
-  if (hit === -1) return (sheetState = false);
-  HERO_SHEET = HERO_SHEET_CANDIDATES[hit];
-  return (sheetState = true);
+  for (const src of HERO_SHEET_CANDIDATES) {
+    if (await tryLoad(src)) {
+      HERO_SHEET = src;
+      return (sheetState = true);
+    }
+  }
+  return (sheetState = false);
 }
 
 export const heroSheetReady = () => sheetState === true;
