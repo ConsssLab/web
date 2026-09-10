@@ -183,7 +183,28 @@
               >在 0G Storage 上查看 ↗</a
             >
           </div>
+          <!-- 賽道一的動作：驗證整場對戰是不是同一位 AI agent。
+               這跟「鏈上回驗」是兩件不同的事 —— 那個驗的是資料有沒有上鏈，
+               這個驗的是「跟你對打的對手中途有沒有被換掉」。 -->
+          <div class="shard-actions">
+            <button class="btn btn--chain" id="btn-tee" type="button">
+              TEE 驗證 · 是同一位 agent 嗎
+            </button>
+          </div>
+
           <p class="shard-note" id="shard-note"></p>
+
+          <!-- TEE 驗證結果。分級顯示，不做非黑即白的綠燈：
+               能證明到哪一層取決於供應商回傳了什麼材料。 -->
+          <div class="tee" id="tee" hidden>
+            <div class="tee-head">
+              <span class="tee-title">TEE 驗證 · 同一位 agent</span>
+              <span class="tee-badge" id="tee-badge"></span>
+            </div>
+            <p class="tee-reason" id="tee-reason"></p>
+            <ul class="tee-turns" id="tee-turns"></ul>
+            <dl class="tee-meta" id="tee-meta"></dl>
+          </div>
 
           <!-- 鏈上存證對照：左邊是本地這枚碎片，右邊是從 0G Chain 的 calldata 解回來的。
                「回驗」到底在驗什麼，看這張表就懂了。 -->

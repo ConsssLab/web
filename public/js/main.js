@@ -48,6 +48,9 @@ const game = {
   busy: false,
   agentInfo: { providerLabel: '尚未呼叫', provider: null, model: null },
   agentTurns: [],
+  agentPending: null,
+  teeChain: [],
+  teeVerdict: null,
   ogStatus: null,
   wallet: null,
   shard: null,
@@ -201,11 +204,14 @@ function startBattle() {
   game.selected = null;
   game.busy = false;
   game.agentTurns = [];
+  game.teeChain = [];
+  game.teeVerdict = null;
   game.shard = null;
   el.taunt.classList.add('is-empty');
-  setAgentChip('AI agent 待命');
+  game.agentPending = null;
   show('battle');
   render();
+  beginAgentThinking();
 }
 
 function setAgentChip(text, thinking = false) {
@@ -367,6 +373,33 @@ function playSelected(lane) {
   render();
 }
 
+/**
+ * 同時出牌：回合一開始就用「玩家還沒部署」的盤面去問 agent。
+ *
+ * 原本是等玩家按下結束回合、才把當前盤面送過去 —— 那等於它拿到你的答案卷才作答。
+ * 在「逐條迴廊比火力」的規則下後手幾乎必勝：只要在你投重兵的那條放掉，
+ * 另外兩條各補一點就淨賺。模擬顯示對上會下棋的對手，玩家勝率是 0%。
+ *
+ * 改成回合開始就送出，還有一個附帶好處：它的思考時間跟你的重疊，回合更順。
+ * 它從舊盤面挑的手可能已經不合法（例如你用溯憶術清掉了它的出兵格附近），
+ * applyAgentPlays 每一手都會 validate，不合法的自動略過 —— 這正是戰爭迷霧該有的樣子。
+ */
+function beginAgentThinking() {
+  const snapshot = R.cloneState(game.state);
+  const summary = `第 ${snapshot.turn} 回合，我方核心 ${snapshot.core.forgetter}，敵方核心 ${snapshot.core.hero}`;
+  setAgentChip('AI agent 讀盤中…', true);
+  // 刻意不 await：讓它在玩家思考的同時決策
+  game.agentPending = askAgent(snapshot, summary).catch((err) => ({
+    plays: [],
+    taunt: '',
+    reason: '',
+    providerLabel: '本地備援',
+    provider: null,
+    model: null,
+    error: String((err && err.message) || err),
+  }));
+}
+
 async function endTurn() {
   if (game.busy || game.state.over) return;
   game.busy = true;
@@ -374,14 +407,16 @@ async function endTurn() {
   render();
 
   // ── 遺忘者（AI agent）回合 ──
-  setAgentChip('AI agent 讀盤中…', true);
+  // 它在你部署之前就開始想了，這裡只是等它回來
   sfx.agent();
-  const summary = `第 ${game.state.turn} 回合，我方核心 ${game.state.core.forgetter}，敵方核心 ${game.state.core.hero}`;
-  const decision = await askAgent(game.state, summary);
+  const decision = await (game.agentPending || Promise.resolve({ plays: [], taunt: '', reason: '', providerLabel: '本地備援' }));
+  game.agentPending = null;
   game.agentInfo = decision;
 
   const { applied } = applyAgentPlays(game.state, decision.plays, R.applyPlay);
   game.agentTurns.push({ turn: game.state.turn, plays: applied, taunt: decision.taunt });
+  // TEE 證據鏈：有拿到才收，沒拿到就不收 —— 鏈的長度短於回合數本身就是一種訊號
+  if (decision.evidence) game.teeChain.push(decision.evidence);
 
   const modelTag = decision.model ? ` · ${decision.model}` : '';
   setAgentChip(
@@ -417,6 +452,7 @@ async function endTurn() {
   el.trayHint.textContent = '選一張牌，再點一條迴廊部署。';
   game.busy = false;
   render();
+  beginAgentThinking(); // 新回合：它跟你同時開始想
 }
 
 /** 動畫刻意壓在 1 秒內：一分鐘的遊戲不能把時間花在等特效。 */
@@ -591,6 +627,7 @@ async function buildShard(result) {
       narrator: narrator ? narrator.provider : '',
       narration: narrator ? narrator.narration : '',
       agentTurns: game.agentTurns,
+      teeChain: game.teeChain,
     });
     game.shard = data;
     $('shard-digest').textContent = data.digest;
@@ -843,6 +880,104 @@ async function pollStorage(root, note, attempts = 6) {
 }
 
 /**
+ * 賽道一的收尾：驗證整場對戰是不是同一位 AI agent。
+ *
+ * 這跟「鏈上回驗」驗的不是同一件事 —— 那個驗資料有沒有真的上鏈，這個驗
+ * 「跟你對打的對手中途有沒有被換掉」。做法是把每回合的證據（它看到的盤面雜湊、
+ * 它回應的雜湊、enclave 簽名、簽章公鑰）串起來，看是不是同一把公鑰、
+ * 而且那把公鑰對得上 attestation 裡的 enclave measurement。
+ *
+ * 結果分四級，刻意不做成通過／不通過：能證明到哪一層完全取決於供應商回了什麼。
+ * 把「只是紀錄一致」畫成綠燈，比沒有這個功能更糟。
+ */
+const TEE_BADGE = {
+  attested: '已驗證 · enclave 等級',
+  signed: '部分驗證 · 缺 attestation',
+  changed: '⚠ 公鑰中途換過',
+  consistent: '未驗證 · 僅紀錄一致',
+  none: '無法驗證',
+};
+
+async function verifyTee() {
+  const btn = $('btn-tee');
+  const panel = $('tee');
+  const reason = $('tee-reason');
+  btn.disabled = true;
+  btn.textContent = '驗證中…';
+
+  try {
+    // attestation 拿不到不算失敗 —— 它只是決定最高能驗到哪一級
+    const attestation = await fetch('/api/og/attest', { headers: { accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+
+    const res = await fetch('/api/og/same-agent', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chain: game.teeChain, attestation }),
+    });
+    if (!res.ok) throw new Error(`same-agent ${res.status}`);
+    const v = await res.json();
+    game.teeVerdict = v;
+
+    const badge = $('tee-badge');
+    badge.textContent = TEE_BADGE[v.level] || v.level;
+    badge.dataset.level = v.level;
+    reason.textContent = v.reason;
+
+    // 逐回合亮燈：同一把公鑰＝藍、換過＝橘、沒簽名＝空心
+    const list = $('tee-turns');
+    list.textContent = '';
+    for (const t of v.perTurn || []) {
+      const li = document.createElement('li');
+      li.className = 'tee-turn';
+      li.dataset.state = !t.signed ? 'unsigned' : t.sameAsFirst === false ? 'changed' : 'ok';
+      const dot = document.createElement('span');
+      dot.className = 'tee-turn-dot';
+      const label = document.createElement('span');
+      label.textContent = `第 ${t.turn} 回合`;
+      li.append(dot, label);
+      list.appendChild(li);
+    }
+    if (!(v.perTurn || []).length) {
+      const li = document.createElement('li');
+      li.className = 'tee-turn';
+      li.dataset.state = 'unsigned';
+      li.textContent = '這一場沒有任何回合留下證據';
+      list.appendChild(li);
+    }
+
+    const meta = $('tee-meta');
+    meta.textContent = '';
+    const rows = [
+      ['回合數', `${v.signedTurns} / ${v.turns} 有簽名`],
+      ['模型', (v.models || []).join(' / ') || '—'],
+      ['供應商', (v.providers || []).join(' / ') || '—'],
+      ['簽章公鑰', v.signer || '未取得'],
+      ['enclave measurement', v.measurement || '未取得'],
+    ];
+    for (const [k, val] of rows) {
+      const dt = document.createElement('dt');
+      dt.textContent = k;
+      const dd = document.createElement('dd');
+      dd.textContent = val;
+      meta.append(dt, dd);
+    }
+
+    panel.hidden = false;
+    btn.textContent = '重新驗證';
+  } catch (err) {
+    panel.hidden = false;
+    $('tee-badge').textContent = '驗證失敗';
+    $('tee-badge').dataset.level = 'none';
+    reason.textContent = `驗證請求本身失敗：${String((err && err.message) || err).slice(0, 120)}`;
+    btn.textContent = 'TEE 驗證 · 是同一位 agent 嗎';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/**
  * 賽道三的收尾：把剛送出去的交易從 0G Chain 讀回來，重新解析 calldata 並比對摘要。
  * 「錢包沒報錯」不算證明，讀得回來、摘要對得上才算。
  */
@@ -861,6 +996,8 @@ async function verifyAnchor({ quiet = false } = {}) {
       btn.textContent = '鏈上回驗';
       btn.disabled = false;
       $('proof').hidden = true;
+    $('tee').hidden = true;
+    $('btn-tee').textContent = 'TEE 驗證 · 是同一位 agent 嗎';
       if (!quiet) note.textContent = '交易還沒進區塊，等幾秒再按一次回驗。';
       return false;
     }
@@ -891,6 +1028,10 @@ function initResult() {
   $('btn-storage').addEventListener('click', () => {
     sfx.tap();
     uploadToStorage();
+  });
+  $('btn-tee').addEventListener('click', () => {
+    sfx.tap();
+    verifyTee();
   });
   $('btn-again').addEventListener('click', () => {
     sfx.tap();

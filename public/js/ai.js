@@ -56,6 +56,9 @@ export async function askAgent(state, summary = '') {
       providerLabel: data.providerLabel || data.provider || '未知',
       model: data.model || null,
       note: data.note || null,
+      // 這一回合的 TEE 證據（盤面雜湊、回應雜湊、簽名、簽章公鑰）。
+      // 供應商沒回傳可驗證的材料時會是 null —— 前端必須照實顯示，不可以當成通過。
+      evidence: data.evidence || null,
     };
   } catch {
     return offline;

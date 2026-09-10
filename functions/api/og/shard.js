@@ -52,6 +52,29 @@ function normalize(raw) {
           taunt: clampStr(t && t.taunt, 60),
         }))
       : [],
+
+    /*
+     * 每回合的 TEE 證據鏈。
+     *
+     * 這一段的存在理由是：碎片的 SHA-256 會被錨定到 0G Chain，所以把證據鏈封進碎片
+     * 之後，「整場七回合都是同一位 agent」這件事就被鏈上摘要蓋住了 —— 第三方拿著
+     * 鏈上那筆交易，就能重新驗證整場，而不是只能相信我們的伺服器。
+     *
+     * 只存雜湊與簽名，不存盤面原文與模型回覆全文：碎片要小（要付儲存費），
+     * 而雜湊已經足以綁定內容。簽名長度夾在 400 字內，避免單一欄位撐爆碎片。
+     */
+    teeChain: Array.isArray(raw && raw.teeChain)
+      ? raw.teeChain.slice(0, 12).map((t) => ({
+          turn: clampInt(t && t.turn, 1, 99, 1),
+          boardHash: clampStr(t && t.boardHash, 70),
+          responseHash: clampStr(t && t.responseHash, 70),
+          signature: clampStr(t && t.signature, 400),
+          signer: clampStr(t && t.signer, 200),
+          measurement: clampStr(t && t.measurement, 200),
+          model: clampStr(t && t.model, 60),
+          provider: clampStr(t && t.provider, 40),
+        }))
+      : [],
     createdAt: new Date().toISOString(),
   };
 }

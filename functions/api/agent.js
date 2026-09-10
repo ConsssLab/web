@@ -12,6 +12,8 @@
  * 前端 rules.js 還會再 validate 一次。台詞用 textContent 塞進 DOM，不走 innerHTML。
  */
 
+import { sealTurn } from './og/tee.js';
+
 const OPENAI_BASE = 'https://api.openai.com/v1';
 const OG_ROUTER_BASE = 'https://router-api.0g.ai/v1';
 
@@ -28,8 +30,16 @@ const json = (data, status = 200) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
+/**
+ * 預設 **0G Compute**，設 AI_PROVIDER=openai 才切回 OpenAI。
+ *
+ * 一開始是反過來的（預設 OpenAI，理由是每回合都要叫、要低延遲）。但那讓「TEE」
+ * 變成空話：跟玩家對打的 agent 根本不在 enclave 裡，就無從證明「整場都是同一位」。
+ * 要讓那個主張成立，敵方 agent 必須跑在 0G Compute 上並帶回可驗證的簽名。
+ * 沒設金鑰時仍會退回本地啟發式，並照實標示「未接上模型」。
+ */
 function providerConfig(env) {
-  const choice = String(env.AI_PROVIDER || 'openai').toLowerCase();
+  const choice = String(env.AI_PROVIDER || '0g').toLowerCase();
   if (choice === '0g' || choice === '0g-compute') {
     return {
       id: '0g-compute',
@@ -66,8 +76,13 @@ const SYSTEM = `你是回合制策略遊戲《鏈州英雄傳 ConSSS Wars》裡�
 - VOID 虛數殼：cost 2，攻 2 血 7。很難殺，適合卡住迴廊。
 - PURGE 清算：cost 3，法術，對指定迴廊的所有敵方單位造成 3 傷，並回復自己核心 3 點。
 
-重要：每回合交戰「之前」會先比較每條迴廊雙方的總攻擊力，高的一方對敵方核心造成 2 點壓制傷害。
-所以「在哪條迴廊投入多少火力」比單純殺兵更重要 —— 即使單位當回合就陣亡，投入的火力一樣算數。
+重要：每回合交戰「之前」會先比較每條迴廊雙方的總攻擊力，高的一方對敵方核心造成壓制傷害。
+傷害隨差距遞增：多 1~2 攻造成 1 點，多 3 攻以上造成 2 點（上限 2），打平不造成傷害。
+所以「在哪條迴廊投入多少火力」比單純殺兵更重要 —— 即使單位當回合就陣亡，投入的火力一樣算數；
+而且贏一條迴廊要贏得夠多才拿得滿，勉強超過只拿一半。
+
+重要：你和敵人是「同時出牌」。你看到的盤面是敵人這回合部署「之前」的狀態，
+所以你不知道他這回合會放什麼、放在哪一條。請照他過去的習慣與盤面威脅去推測，不要假設某條迴廊一定空著。
 
 策略提示：敵方單位推進到 cell 1 或 2 時要優先處理；三條迴廊的火力都要顧，被壓制的迴廊每回合都在扣血；算力沒用完等於浪費。
 
@@ -231,12 +246,31 @@ export async function onRequestPost({ request, env }) {
       return fallback(`${cfg.label} ${res.status}: ${detail.slice(0, 160)}`);
     }
 
-    const data = await res.json();
+    // 原始文字要留著：證據鏈裡的 responseHash 算的是「供應商實際回了什麼」，
+    // 不是我們解析後的結果 —— 解析後才算就等於在證明我們自己的程式，沒有意義。
+    const rawText = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      return fallback(`${cfg.label} 回傳不是 JSON`);
+    }
     const message = data && data.choices && data.choices[0] && data.choices[0].message;
     const parsed = extractJson(message && message.content);
     if (!parsed) return fallback(`${cfg.label} 回傳無法解析`);
 
     const plays = sanitizePlays(parsed.plays, legal, view.yourCompute);
+    const evidence = await sealTurn({
+      turn: Number.isFinite(Number(view.turn)) ? Math.max(1, Math.min(99, Math.trunc(Number(view.turn)))) : 1,
+      view,
+      legal,
+      rawResponse: rawText,
+      headers: res.headers,
+      body: data,
+      model: cfg.model,
+      provider: cfg.id,
+    });
+
     return json({
       plays: plays.length ? plays : heuristic(view, legal),
       usedFallbackPlays: plays.length === 0,
@@ -245,6 +279,7 @@ export async function onRequestPost({ request, env }) {
       provider: cfg.id,
       providerLabel: cfg.label,
       model: cfg.model,
+      evidence,
     });
   } catch (err) {
     return fallback(
