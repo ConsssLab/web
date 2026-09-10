@@ -781,22 +781,13 @@ async function uploadToStorage() {
     note.textContent = `0G Storage root ${shortHash(root)}${tx ? `　submit tx ${shortHash(String(tx))}` : ''}`;
     renderTracks({ storage: { uploaded: true, root } });
 
-    const link = $('link-storage');
-    link.href = `https://storagescan-galileo.0g.ai/file/${root}`;
-    link.classList.remove('is-disabled');
-    link.removeAttribute('aria-disabled');
-
-    // 存完再跟 indexer 對一次，確認節點真的收下並完成同步
-    try {
-      const info = await OG.storageInfo(root);
-      if (info && info.found) {
-        renderTracks({ storage: { uploaded: true, root, finalized: info.finalized } });
-        note.textContent = `已存進 0G Storage${info.finalized ? '（已 finalized）' : '（同步中）'}　root ${shortHash(root)}`;
-        if (info.scanUrl) link.href = info.scanUrl;
-      }
-    } catch {
-      // indexer 查詢失敗不影響「已上傳」這件事，畫面維持上一段的結果
-    }
+    // 「在 0G Storage 上查看」要等真的查得到才開放。
+    //
+    // 之前是上傳完就直接把連結指到 storagescan 的 /file/<root>，結果點下去 404 ——
+    // 那個站根本沒有這條路徑，檔案頁是用提交序號定位的（/submission/<txSeq>），
+    // 而序號要跟 indexer 查了才知道。所以改成查到序號才解鎖按鈕；查不到就照實
+    // 留成不可按，不要給玩家一個會 404 的連結。
+    await pollStorage(root, note);
   } catch (err) {
     btn.textContent = '存進 0G Storage';
     btn.disabled = false;
@@ -807,6 +798,48 @@ async function uploadToStorage() {
       serverSaysLive: Boolean(st && st.live),
     });
   }
+}
+
+/**
+ * 上傳完之後跟 indexer 要這個檔案的提交序號，拿到才解鎖 storagescan 連結。
+ *
+ * 為什麼要輪詢：segment 傳完不等於索引好。節點要先把 log entry 同步進來，
+ * indexer 才答得出 tx.seq。實測這中間有幾秒到十幾秒，馬上查通常是空的。
+ *
+ * 每一輪都照實更新畫面上那句話，不要讓玩家對著沒反應的按鈕猜。
+ * 輪完還是沒有就維持不可按，並說明檔案已經上傳、只是還沒被索引到。
+ */
+async function pollStorage(root, note, attempts = 6) {
+  const link = $('link-storage');
+
+  for (let i = 0; i < attempts; i++) {
+    let info = null;
+    try {
+      info = await OG.storageInfo(root);
+    } catch {
+      // indexer 查詢失敗不影響「已上傳」這件事，下一輪再試
+    }
+
+    if (info && info.found) {
+      renderTracks({ storage: { uploaded: true, root, finalized: info.finalized } });
+      note.textContent = `已存進 0G Storage${info.finalized ? '（已 finalized）' : '（同步中）'}　root ${shortHash(root)}`;
+
+      if (info.scanUrl) {
+        link.href = info.scanUrl;
+        link.classList.remove('is-disabled');
+        link.removeAttribute('aria-disabled');
+        return true;
+      }
+    }
+
+    if (i < attempts - 1) {
+      note.textContent = `已存進 0G Storage　root ${shortHash(root)}　等待索引…（第 ${i + 1} 次查詢）`;
+      await sleep(3000);
+    }
+  }
+
+  note.textContent = `已存進 0G Storage　root ${shortHash(root)}　storagescan 還沒索引到這筆，稍後可用 root 自行查詢`;
+  return false;
 }
 
 /**

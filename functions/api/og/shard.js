@@ -151,7 +151,9 @@ async function uploadToStorage(env, shard, bytes) {
       indexer,
       root: root || null,
       txSeq: txSeq === null ? null : clampInt(txSeq, 0, Number.MAX_SAFE_INTEGER),
-      scanUrl: root ? `${GALILEO.storageScan}/file/${root}` : null,
+      // storagescan 是用提交序號定位的（/submission/<txSeq>），沒有 /file/<root>。
+      // gateway 有回序號才給得出連結，否則留 null，不要給一個 404 的網址。
+      scanUrl: txSeq === null ? null : `${GALILEO.storageScan}/submission/${txSeq}`,
       response: body,
     };
   } catch (err) {
